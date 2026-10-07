@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: kenya-crm-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: kenya_crm
+      MYSQL_USER: crm_user
+      MYSQL_PASSWORD: secure_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
+      - ./database/seed_data.sql:/docker-entrypoint-initdb.d/2-seed_data.sql
+    ports:
+      - "3306:3306"
+    networks:
+      - kenya-crm-network
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kenya-crm-backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_USER: crm_user
+      DB_PASSWORD: secure_password
+      DB_NAME: kenya_crm
+      JWT_SECRET: your_super_secret_jwt_key_here_change_in_production
+      JWT_EXPIRES_IN: 8h
+      NODE_ENV: development
+      PORT: 5000
+      FRONTEND_URL: http://localhost:3000
+    depends_on:
+      - mysql
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+    networks:
+      - kenya-crm-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kenya-crm-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:5000/api
+      VITE_APP_NAME: Kenya CRM
+      VITE_APP_VERSION: 1.0.0
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - kenya-crm-network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  kenya-crm-network:
+    driver: bridge

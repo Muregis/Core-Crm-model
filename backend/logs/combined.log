@@ -1,0 +1,17 @@
+{"level":"info","message":"Server running on port 5000 in development mode","service":"kenya-crm-backend","timestamp":"2026-03-12 20:19:41"}
+{"code":"ECONNREFUSED","fatal":true,"level":"error","message":"Database connection failed:","service":"kenya-crm-backend","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1142:49)\n    at afterConnectMultiple (node:net:1723:7)","timestamp":"2026-03-12 20:19:41"}
+{"level":"info","message":"Server running on port 5000 in development mode","service":"kenya-crm-backend","timestamp":"2026-03-12 20:36:08"}
+{"code":"ECONNREFUSED","fatal":true,"level":"error","message":"Database connection failed:","service":"kenya-crm-backend","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1142:49)\n    at afterConnectMultiple (node:net:1723:7)","timestamp":"2026-03-12 20:36:08"}
+{"level":"info","message":"Server running on port 5000 in development mode","service":"kenya-crm-backend","timestamp":"2026-03-12 20:36:46"}
+{"code":"ECONNREFUSED","fatal":true,"level":"error","message":"Database connection failed:","service":"kenya-crm-backend","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1142:49)\n    at afterConnectMultiple (node:net:1723:7)","timestamp":"2026-03-12 20:36:46"}
+{"level":"info","message":"Server running on port 5000 in development mode","service":"kenya-crm-backend","timestamp":"2026-03-12 20:41:03"}
+{"level":"info","message":"Database: SQLite","service":"kenya-crm-backend","timestamp":"2026-03-12 20:41:03"}
+{"level":"info","message":"Server running on port 5000 in development mode","service":"kenya-crm-backend","timestamp":"2026-03-12 20:47:06"}
+{"level":"info","message":"Database: SQLite","service":"kenya-crm-backend","timestamp":"2026-03-12 20:47:06"}
+{"level":"info","message":"Server running on port 5000 in development mode","service":"kenya-crm-backend","timestamp":"2026-03-12 20:47:29"}
+{"level":"info","message":"Database: SQLite","service":"kenya-crm-backend","timestamp":"2026-03-12 20:47:29"}
+{"level":"info","message":"Server running on port 5000 in development mode","service":"kenya-crm-backend","timestamp":"2026-03-12 20:48:25"}
+{"level":"info","message":"Server running on port 5000 in development mode","service":"kenya-crm-backend","timestamp":"2026-03-12 20:48:39"}
+{"level":"info","message":"Database: SQLite","service":"kenya-crm-backend","timestamp":"2026-03-12 20:48:39"}
+{"level":"info","message":"Server running on port 5000 in development mode","service":"kenya-crm-backend","timestamp":"2026-03-12 20:49:40"}
+{"level":"info","message":"Database: SQLite","service":"kenya-crm-backend","timestamp":"2026-03-12 20:49:40"}
