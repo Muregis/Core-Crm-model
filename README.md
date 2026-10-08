@@ -1,67 +1,96 @@
 # Kenya CRM
 
-CRM-oriented platform aimed at Kenyan SMEs and SACCOs: customer/lead management, sales pipeline, role-based access, and localization hooks (counties, KES, M-Pesa-oriented payment tracking).
+CRM platform for Kenyan SMEs and SACCOs: customers, leads, pipeline, role-based access, and M-Pesa-oriented payment tracking with county-level localization.
 
-## Stack
+## Problem
 
-| Layer | Tech |
-|-------|------|
-| Frontend | React 18, Vite, Tailwind CSS, React Router |
-| Backend | Node.js, Express, JWT + bcrypt |
-| Database | MySQL 8+ |
-| Deploy helper | Docker Compose |
+Many Kenyan SMEs and SACCOs still track customers and payments in spreadsheets or generic tools that ignore local realities: **47 counties**, **KES**, **M-Pesa**, and mixed field + office sales workflows.
 
-## Project layout
+## Solution
+
+A focused CRM with:
+
+- Customer and lead records with Kenyan location fields
+- Sales pipeline stages and deal tracking
+- JWT auth with role-based access (admin / manager / sales)
+- M-Pesa-oriented transaction records
+- Communication and task hooks
+- Optional background workers (`npm run worker`) via BullMQ + Redis
+
+## Architecture
 
 ```
-├── frontend/          # React (Vite) app
-├── backend/           # Express API
-├── database/          # schema + seed SQL
-├── docs/              # setup / API notes
-├── docker-compose.yml
-└── setup.sh
+React (Vite)  ──REST──▶  Express API  ──▶  MySQL
+                              │
+                              ├── JWT + bcrypt + Helmet + rate limit
+                              └── BullMQ workers (optional Redis)
 ```
+
+| Layer | Choices |
+|-------|---------|
+| Frontend | React 18, Vite, Tailwind, React Router |
+| API | Node.js, Express, Joi / express-validator |
+| Auth | JWT, bcrypt, role checks |
+| Data | MySQL 8 (schema under `database/`) |
+| Jobs | BullMQ + Redis (worker entry: `backend/workers`) |
+| Ops | Docker Compose, Winston logging |
+
+## Key engineering decisions
+
+1. **MySQL relational model** — customers, leads, deals, pipeline stages, M-Pesa transactions, communications, tasks, attachments, audit-oriented tables. Fits reporting and SACCO-style group data better than a single contacts dump.
+2. **Kenyan localization in the schema** — counties / sub-counties, KES framing, M-Pesa transaction fields rather as first-class concepts.
+3. **Workers as a separate process** — `npm run worker` keeps long-running or async work off the request path (email, imports, reports as the queue matures).
+4. **Security baseline** — Helmet, rate limiting, JWT expiry, password hashing; secrets only via environment (see `.env.example`).
+
+## Security
+
+- Never commit `.env` — copy from `backend/.env.example`
+- Rotate any credential that ever appeared in Git history
+- Production: strong `JWT_SECRET`, HTTPS, least-privilege DB user
+
+## Testing & CI
+
+```bash
+cd backend
+npm test
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs install + tests on PRs to `main`.
+
+Current suite is a **baseline harness** (Jest + Supertest). Next targets:
+
+| Case | Expected |
+|------|----------|
+| Unauthenticated `GET /api/leads` | 401 |
+| Invalid login body | 400 |
+| Valid lead create (authorized role) | 201 |
+| Forbidden role | 403 |
 
 ## Quick start
 
 **Prerequisites:** Node.js 18+, MySQL 8+
 
 ```bash
-# Database
 mysql -u root -p -e "CREATE DATABASE kenya_crm;"
 mysql -u root -p kenya_crm < database/schema.sql
 mysql -u root -p kenya_crm < database/seed_data.sql
 
-# Backend
-cd backend && cp .env.example .env   # set DB credentials
-npm install && npm run dev          # default :5000
+cd backend && cp .env.example .env   # set real DB credentials
+npm install && npm run dev           # :5000
 
-# Frontend (separate terminal)
-cd frontend && cp .env.example .env
-npm install && npm run dev          # default :5173
+cd ../frontend && cp .env.example .env
+npm install && npm run dev           # :5173
 ```
 
-Or use Docker Compose when configured:
+Optional worker (requires Redis when enabled):
 
 ```bash
-docker-compose up -d
+cd backend && npm run worker
 ```
-
-Default admin (from seed data — change in any real deployment): see seed / docs.
-
-## Implemented focus areas
-
-- JWT auth and role-based access (admin / sales / manager style roles)
-- Customer profiles with county-oriented fields
-- Lead and pipeline-oriented modules
-- Payment / M-Pesa-oriented transaction tracking UI and API hooks
-- Basic analytics charts on the dashboard
-
-Exact feature depth varies by module — inspect `backend/` and `frontend/src/` for what is wired end-to-end.
 
 ## Status
 
-Active development. Suitable as a portfolio and starting point for Kenyan-market CRM workflows. Harden secrets, tests, and production config before any real customer use.
+Active development. Strong domain and backend shape; treat as a portfolio-grade business system foundation. Expand automated tests and untrack any remaining local `node_modules` / log files before production use.
 
 ## License
 
@@ -69,4 +98,4 @@ MIT (if present in repo).
 
 ---
 
-Built by Victor Muregi for Kenyan business contexts.
+Built by **Victor Muregi** for Kenyan business contexts.
