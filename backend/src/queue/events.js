@@ -10,7 +10,8 @@ const setupQueueEvents = (queueName) => {
     logger.info(`Global Event: Job ${jobId} added to ${queueName}`);
     try {
       await db.query(
-        `INSERT INTO jobs (job_id, type, status, created_at) VALUES (?, ?, 'waiting', NOW()) ON DUPLICATE KEY UPDATE status='waiting', type=?`,
+        `INSERT INTO jobs (job_id, type, status, created_at) VALUES (?, ?, 'waiting', NOW())
+         ON DUPLICATE KEY UPDATE status='waiting', type=?`,
         [jobId, name, name]
       );
     } catch (e) {
@@ -18,7 +19,7 @@ const setupQueueEvents = (queueName) => {
     }
   });
 
-  queueEvents.on('active', async ({ jobId, prev }) => {
+  queueEvents.on('active', async ({ jobId }) => {
     logger.info(`Global Event: Job ${jobId} active in ${queueName}`);
     try {
       await db.query(
@@ -33,9 +34,13 @@ const setupQueueEvents = (queueName) => {
   queueEvents.on('completed', async ({ jobId, returnvalue }) => {
     logger.info(`Global Event: Job ${jobId} completed in ${queueName}`);
     try {
+      let resultJson = null;
+      if (returnvalue != null) {
+        resultJson = typeof returnvalue === 'string' ? returnvalue : JSON.stringify(returnvalue);
+      }
       await db.query(
-        `UPDATE jobs SET status = 'completed', completed_at = NOW() WHERE job_id = ?`,
-        [jobId]
+        `UPDATE jobs SET status = 'completed', completed_at = NOW(), result_json = COALESCE(?, result_json) WHERE job_id = ?`,
+        [resultJson, jobId]
       );
     } catch (e) {
       logger.error('Failed to log job completed:', e);
@@ -53,11 +58,10 @@ const setupQueueEvents = (queueName) => {
       logger.error('Failed to log job failed:', e);
     }
   });
-  
+
   return queueEvents;
 };
 
-// Initialize listeners
 const emailEvents = setupQueueEvents('email');
 const reportEvents = setupQueueEvents('report');
 const importEvents = setupQueueEvents('import');
@@ -65,5 +69,5 @@ const importEvents = setupQueueEvents('import');
 module.exports = {
   emailEvents,
   reportEvents,
-  importEvents,
+  importEvents
 };

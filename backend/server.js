@@ -19,21 +19,19 @@ const analyticsRoutes = require('./src/routes/analytics');
 const countyRoutes = require('./src/routes/counties');
 const uploadRoutes = require('./src/routes/uploads');
 const jobsRoutes = require('./src/routes/jobs');
+const reportsRoutes = require('./src/routes/reports');
 
 const db = require('./src/config/database');
 
 const app = express();
 
-// Security middleware
 app.use(helmet());
 
-// CORS configuration
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5174',
   credentials: true
 }));
 
-// Rate limiting (relaxed in test)
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
@@ -44,14 +42,11 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Request logging
 app.use((req, res, next) => {
   if (process.env.NODE_ENV !== 'test') {
     logger.info(`${req.method} ${req.path}`, {
@@ -62,7 +57,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
 app.get('/health', async (req, res) => {
   let dbHealthy = false;
   let redisHealthy = false;
@@ -80,7 +74,6 @@ app.get('/health', async (req, res) => {
     await client.ping();
     redisHealthy = true;
   } catch (e) {
-    // Redis optional for basic API tests
     if (process.env.NODE_ENV !== 'test') {
       logger.error('Redis Healthcheck failed', e);
     }
@@ -101,7 +94,6 @@ app.get('/health', async (req, res) => {
   });
 });
 
-// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/customers', customerRoutes);
@@ -114,8 +106,8 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/counties', countyRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/jobs', jobsRoutes);
+app.use('/api/reports', reportsRoutes);
 
-// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
@@ -123,7 +115,6 @@ app.use('*', (req, res) => {
   });
 });
 
-// Global error handler
 app.use(errorHandler);
 
 process.on('SIGTERM', () => {
@@ -147,7 +138,6 @@ process.on('uncaughtException', (error) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Only listen outside of tests — Supertest imports this module
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
