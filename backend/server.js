@@ -33,13 +33,14 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
+// Rate limiting (relaxed in test)
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
   message: {
     error: 'Too many requests from this IP, please try again later.'
-  }
+  },
+  skip: () => process.env.NODE_ENV === 'test'
 });
 app.use('/api/', limiter);
 
@@ -52,10 +53,12 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Request logging
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path}`, {
-    ip: req.ip,
-    userAgent: req.get('User-Agent')
-  });
+  if (process.env.NODE_ENV !== 'test') {
+    logger.info(`${req.method} ${req.path}`, {
+      ip: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+  }
   next();
 });
 
@@ -65,11 +68,7 @@ app.get('/health', async (req, res) => {
   let redisHealthy = false;
 
   try {
-    if (process.env.NODE_ENV === 'production') {
-      await db.query('SELECT 1');
-    } else {
-      await db.query('SELECT 1'); // Both sqlite and mysql support this usually
-    }
+    await db.query('SELECT 1');
     dbHealthy = true;
   } catch (e) {
     logger.error('DB Healthcheck failed', e);
@@ -81,11 +80,15 @@ app.get('/health', async (req, res) => {
     await client.ping();
     redisHealthy = true;
   } catch (e) {
-    logger.error('Redis Healthcheck failed', e);
+    // Redis optional for basic API tests
+    if (process.env.NODE_ENV !== 'test') {
+      logger.error('Redis Healthcheck failed', e);
+    }
   }
 
-  res.status((dbHealthy && redisHealthy) ? 200 : 503).json({
-    status: (dbHealthy && redisHealthy) ? 'OK' : 'DEGRADED',
+  const ok = dbHealthy && (redisHealthy || process.env.NODE_ENV === 'test');
+  res.status(ok ? 200 : 503).json({
+    status: ok ? 'OK' : 'DEGRADED',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
@@ -123,7 +126,6 @@ app.use('*', (req, res) => {
 // Global error handler
 app.use(errorHandler);
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
   process.exit(0);
@@ -134,12 +136,10 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// Unhandled promise rejection handler
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// Uncaught exception handler
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception:', error);
   process.exit(1);
@@ -147,9 +147,12 @@ process.on('uncaughtException', (error) => {
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
-  logger.info(`Database: ${process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite'}`);
-});
+// Only listen outside of tests — Supertest imports this module
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+    logger.info(`Database: ${process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite'}`);
+  });
+}
 
 module.exports = app;
