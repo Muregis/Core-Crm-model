@@ -1,264 +1,72 @@
-# Kenya CRM - Customer Relationship Management Platform
+# Kenya CRM
 
-A production-grade CRM platform specifically designed for the Kenyan market, featuring M-Pesa integration, county-based segmentation, and localized business workflows.
+CRM-oriented platform aimed at Kenyan SMEs and SACCOs: customer/lead management, sales pipeline, role-based access, and localization hooks (counties, KES, M-Pesa-oriented payment tracking).
 
-## 🌟 Key Features
+## Stack
 
-- **Kenyan Market Focus**: County-based customer segmentation, KES currency, M-Pesa integration
-- **Modern Tech Stack**: React (Vite) + Node.js + MySQL
-- **Mobile-First Design**: Responsive interface optimized for Kenyan users
-- **Advanced Analytics**: Sales dashboards, revenue tracking, conversion metrics
-- **Role-Based Access**: Admin, Sales Rep, Manager roles with JWT authentication
-- **Communication Hub**: WhatsApp integration, SMS logging, email tracking
-- **SACCO/SME Features**: Group customer management, bulk operations
+| Layer | Tech |
+|-------|------|
+| Frontend | React 18, Vite, Tailwind CSS, React Router |
+| Backend | Node.js, Express, JWT + bcrypt |
+| Database | MySQL 8+ |
+| Deploy helper | Docker Compose |
 
-## 🚀 Tech Stack
-
-### Frontend
-- **React 18** with Vite
-- **TailwindCSS** for modern, colorful UI
-- **React Router** for navigation
-- **Chart.js/Recharts** for analytics
-- **Lucide Icons** for professional icons
-- **Axios** for API calls
-
-### Backend
-- **Node.js** with Express.js
-- **JWT Authentication** with bcrypt
-- **MySQL** database
-- **Multer** for file uploads
-- **CORS** enabled
-- **Winston** for logging
-
-### Database
-- **MySQL 8.0+**
-- Optimized relational schema
-- Proper indexing for performance
-- County and region data
-
-## 📁 Project Structure
+## Project layout
 
 ```
-kenya-crm/
-├── frontend/                 # React frontend application
-│   ├── public/
-│   ├── src/
-│   │   ├── components/      # Reusable UI components
-│   │   ├── pages/          # Page components
-│   │   ├── hooks/          # Custom React hooks
-│   │   ├── services/       # API service functions
-│   │   ├── utils/          # Utility functions
-│   │   └── styles/         # Global styles
-│   ├── package.json
-│   └── vite.config.js
-├── backend/                 # Node.js backend API
-│   ├── src/
-│   │   ├── controllers/    # Route controllers
-│   │   ├── models/         # Database models
-│   │   ├── routes/         # API routes
-│   │   ├── middleware/     # Express middleware
-│   │   ├── utils/          # Utility functions
-│   │   └── config/         # Configuration files
-│   ├── package.json
-│   └── server.js
-├── database/               # Database schema and migrations
-│   ├── schema.sql
-│   ├── seed_data.sql
-│   └── migrations/
-└── docs/                   # Documentation
-    ├── API.md
-    ├── SETUP.md
-    └── DEPLOYMENT.md
+├── frontend/          # React (Vite) app
+├── backend/           # Express API
+├── database/          # schema + seed SQL
+├── docs/              # setup / API notes
+├── docker-compose.yml
+└── setup.sh
 ```
 
-## 🛠️ Installation & Setup
+## Quick start
 
-### Prerequisites
-- Node.js 16+ 
-- MySQL 8.0+
-- Git
+**Prerequisites:** Node.js 18+, MySQL 8+
 
-### Quick Start
+```bash
+# Database
+mysql -u root -p -e "CREATE DATABASE kenya_crm;"
+mysql -u root -p kenya_crm < database/schema.sql
+mysql -u root -p kenya_crm < database/seed_data.sql
 
-1. **Clone and setup**
-   ```bash
-   cd kenya-crm
-   npm run setup
-   ```
+# Backend
+cd backend && cp .env.example .env   # set DB credentials
+npm install && npm run dev          # default :5000
 
-2. **Database Setup**
-   ```bash
-   # Create database and user
-   mysql -u root -p
-   CREATE DATABASE kenya_crm;
-   CREATE USER 'crm_user'@'localhost' IDENTIFIED BY 'secure_password';
-   GRANT ALL PRIVILEGES ON kenya_crm.* TO 'crm_user'@'localhost';
-   FLUSH PRIVILEGES;
-   
-   # Import schema
-   mysql -u crm_user -p kenya_crm < database/schema.sql
-   mysql -u crm_user -p kenya_crm < database/seed_data.sql
-   ```
+# Frontend (separate terminal)
+cd frontend && cp .env.example .env
+npm install && npm run dev          # default :5173
+```
 
-3. **Environment Configuration**
-   ```bash
-   # Backend
-   cd backend
-   cp .env.example .env
-   # Edit .env with your database credentials
-   
-   # Frontend  
-   cd ../frontend
-   cp .env.example .env
-   ```
+Or use Docker Compose when configured:
 
-4. **Start Development Servers**
-   ```bash
-   # Backend (port 5000)
-   cd backend
-   npm run dev
-   
-   # Frontend (port 5173) - in new terminal
-   cd frontend
-   npm run dev
-   ```
-
-## 🌐 Access
-
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:5000
-- **Default Admin**: admin@kenyacrm.com / admin123
-
-## 📊 Core Modules
-
-### 1. Authentication System
-- JWT-based secure authentication
-- Role-based access control (Admin, Sales Rep, Manager)
-- Password encryption with bcrypt
-- Session management
-
-### 2. Customer Management
-- Complete customer profiles
-- County/sub-county location tracking
-- Business categorization
-- Customer segmentation and tagging
-- Activity timeline
-
-### 3. Lead Management
-- Lead capture and scoring
-- Pipeline stage tracking
-- Conversion analytics
-- Notes and attachments
-
-### 4. Sales Pipeline
-- Visual Kanban board
-- Deal stage management
-- Revenue forecasting
-- Performance metrics
-
-### 5. M-Pesa Integration
-- Transaction tracking
-- Payment status updates
-- Revenue dashboard
-- Transaction history
-
-### 6. Communication Hub
-- WhatsApp contact integration
-- SMS logging system
-- Email history tracking
-- Interaction notes
-
-### 7. Task Management
-- Sales task creation
-- Follow-up reminders
-- Activity notifications
-- Calendar integration
-
-### 8. Analytics Dashboard
-- Sales performance charts
-- Customer growth metrics
-- Revenue analytics
-- Conversion tracking
-
-## 🎨 UI Features
-
-- **Modern Design**: Colorful, professional SaaS interface
-- **Dark/Light Mode**: User preference support
-- **Responsive**: Mobile-first design
-- **Animations**: Smooth transitions and micro-interactions
-- **Charts**: Interactive data visualizations
-
-## 🌍 Kenyan Localization
-
-- **Counties**: All 47 Kenyan counties with sub-counties
-- **Currency**: Kenyan Shilling (KES) formatting
-- **Date Formats**: DD/MM/YYYY format
-- **Language**: Optional Kiswahili labels
-- **Business Context**: Tailored for Kenyan business practices
-
-## 🔒 Security Features
-
-- JWT token authentication
-- Password hashing with bcrypt
-- CORS protection
-- Input validation and sanitization
-- SQL injection prevention
-- Rate limiting
-
-## 📱 Mobile Optimization
-
-- Responsive design for all screen sizes
-- Touch-friendly interface
-- Offline capability with sync
-- Progressive Web App (PWA) ready
-
-## 🚀 Production Deployment
-
-### Docker Deployment
 ```bash
 docker-compose up -d
 ```
 
-### Traditional Deployment
-- Backend: PM2 process manager
-- Frontend: Nginx static serving
-- Database: MySQL server
-- SSL: Let's Encrypt certificates
+Default admin (from seed data — change in any real deployment): see seed / docs.
 
-## 📈 Performance
+## Implemented focus areas
 
-- **Database**: Optimized queries with proper indexing
-- **Frontend**: Code splitting and lazy loading
-- **Caching**: Redis for session and data caching
-- **CDN**: Asset delivery optimization
+- JWT auth and role-based access (admin / sales / manager style roles)
+- Customer profiles with county-oriented fields
+- Lead and pipeline-oriented modules
+- Payment / M-Pesa-oriented transaction tracking UI and API hooks
+- Basic analytics charts on the dashboard
 
-## 🤝 Contributing
+Exact feature depth varies by module — inspect `backend/` and `frontend/src/` for what is wired end-to-end.
 
-1. Fork the repository
-2. Create feature branch
-3. Commit changes
-4. Push to branch
-5. Create Pull Request
+## Status
 
-## 📄 License
+Active development. Suitable as a portfolio and starting point for Kenyan-market CRM workflows. Harden secrets, tests, and production config before any real customer use.
 
-MIT License - see LICENSE file for details
+## License
 
-## 🆘 Support
-
-- Email: muregivictor@gmail.com
-- Documentation: /docs
-- Issues: GitHub Issues
-
-## 🔄 Roadmap
-
-- [ ] Mobile app (React Native)
-- [ ] Advanced reporting
-- [ ] API integrations
-- [ ] Multi-tenant support
-- [ ] AI-powered insights
-- [ ] Advanced automation workflows
+MIT (if present in repo).
 
 ---
 
-Built with ❤️ for Kenyan businesses
+Built by Victor Muregi for Kenyan business contexts.
