@@ -37,10 +37,10 @@ React (Vite)  ──REST──▶  Express API  ──▶  MySQL
 
 ## Key engineering decisions
 
-1. **MySQL relational model** — customers, leads, deals, pipeline stages, M-Pesa transactions, communications, tasks, attachments, audit-oriented tables. Fits reporting and SACCO-style group data better than a single contacts dump.
-2. **Kenyan localization in the schema** — counties / sub-counties, KES framing, M-Pesa transaction fields rather as first-class concepts.
-3. **Workers as a separate process** — `npm run worker` keeps long-running or async work off the request path (email, imports, reports as the queue matures).
-4. **Security baseline** — Helmet, rate limiting, JWT expiry, password hashing; secrets only via environment (see `.env.example`).
+1. **MySQL relational model** — customers, leads, deals, pipeline stages, M-Pesa transactions, communications, tasks, attachments, audit-oriented tables.
+2. **Kenyan localization in the schema** — counties / sub-counties, KES, M-Pesa as first-class concepts.
+3. **Workers as a separate process** — long-running work off the request path.
+4. **Security baseline** — Helmet, rate limiting, JWT, bcrypt; secrets via environment only.
 
 ## Security
 
@@ -55,16 +55,18 @@ cd backend
 npm test
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs install + tests on PRs to `main`.
-
-Current suite is a **baseline harness** (Jest + Supertest). Next targets:
+GitHub Actions runs install + tests on PRs to `main`.
 
 | Case | Expected |
 |------|----------|
-| Unauthenticated `GET /api/leads` | 401 |
-| Invalid login body | 400 |
-| Valid lead create (authorized role) | 201 |
-| Forbidden role | 403 |
+| Empty / malformed login body | 400 |
+| Invalid credentials | 400/401 |
+| `GET /api/auth/me` without token | 401 |
+| Garbage Bearer token | 401 |
+| Unauthenticated `GET /api/leads`, `/customers`, `/deals`, `/jobs`, `/tasks` | 401 |
+| `GET /health` | 200 or 503 with services payload |
+
+Next: seed test users for RBAC 403 cases and lead create 201; finish one BullMQ report workflow with job state tests.
 
 ## Quick start
 
@@ -75,14 +77,14 @@ mysql -u root -p -e "CREATE DATABASE kenya_crm;"
 mysql -u root -p kenya_crm < database/schema.sql
 mysql -u root -p kenya_crm < database/seed_data.sql
 
-cd backend && cp .env.example .env   # set real DB credentials
+cd backend && cp .env.example .env
 npm install && npm run dev           # :5000
 
 cd ../frontend && cp .env.example .env
 npm install && npm run dev           # :5173
 ```
 
-Optional worker (requires Redis when enabled):
+Optional worker (requires Redis):
 
 ```bash
 cd backend && npm run worker
@@ -90,7 +92,7 @@ cd backend && npm run worker
 
 ## Status
 
-Active development. Strong domain and backend shape; treat as a portfolio-grade business system foundation. Expand automated tests and untrack any remaining local `node_modules` / log files before production use.
+Active development. Auth integration tests are on branch `test/crm-integration-suite`.
 
 ## License
 
