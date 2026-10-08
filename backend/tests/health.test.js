@@ -1,18 +1,13 @@
-/**
- * Baseline API smoke tests.
- * Expand with auth, leads, and RBAC cases as the suite grows.
- */
 const request = require('supertest');
+const app = require('../server');
 
-// Prefer exporting the Express app from server.js without listen() for tests.
-// Until that refactor, this file documents the intended contract.
-describe('Kenya CRM API contracts', () => {
-  test('test harness is wired (jest + supertest available)', () => {
-    expect(typeof request).toBe('function');
+describe('GET /health', () => {
+  test('responds with status payload', async () => {
+    const res = await request(app).get('/health');
+    // 200 when DB up; 503 when degraded — both are valid API contracts
+    expect([200, 503]).toContain(res.status);
+    expect(res.body).toHaveProperty('status');
+    expect(res.body).toHaveProperty('services');
+    expect(res.body.services).toHaveProperty('api');
   });
-
-  // Example target cases for the next iteration:
-  // POST /api/auth/login → 400 without body
-  // GET /api/leads without token → 401
-  // POST /api/leads as sales role → 201 with valid payload
 });
