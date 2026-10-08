@@ -122,8 +122,29 @@ const updateCustomerValidation = [
     .withMessage('Tags must be an array')
 ];
 
+const { enqueueImportJob } = require('../jobs/producers/importProducer');
+
 // Routes
 router.get('/', getCustomers);
+router.post('/import', async (req, res) => {
+  try {
+    // normally handle file upload (e.g. via multer)
+    // Here we simulate the file upload part by passing a filePath from the request body or simulating one
+    const filePath = req.body.filePath || '/tmp/dummy-upload.csv';
+    const idempotencyKey = req.body.idempotencyKey || null;
+
+    const job = await enqueueImportJob({ filePath, idempotencyKey });
+    
+    // HTTP 202 Accepted
+    res.status(202).json({
+      success: true,
+      message: 'Customer import job queued',
+      jobId: job.id
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to queue import job' });
+  }
+});
 router.get('/:id', getCustomer);
 router.post('/', createCustomerValidation, logActivity('CREATE', 'customer'), createCustomer);
 router.put('/:id', updateCustomerValidation, logActivity('UPDATE', 'customer'), updateCustomer);

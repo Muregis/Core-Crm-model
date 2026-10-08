@@ -35,12 +35,38 @@ services:
       NODE_ENV: development
       PORT: 5000
       FRONTEND_URL: http://localhost:3000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       - mysql
+      - redis
     ports:
       - "5000:5000"
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+    networks:
+      - kenya-crm-network
+
+  worker:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kenya-crm-worker
+    restart: unless-stopped
+    command: npm run worker
+    environment:
+      DB_HOST: mysql
+      DB_USER: crm_user
+      DB_PASSWORD: secure_password
+      DB_NAME: kenya_crm
+      NODE_ENV: development
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - mysql
+      - redis
+    volumes:
       - ./backend/logs:/app/logs
     networks:
       - kenya-crm-network
@@ -59,6 +85,15 @@ services:
       - "3000:80"
     depends_on:
       - backend
+    networks:
+      - kenya-crm-network
+
+  redis:
+    image: redis:7
+    container_name: kenya-crm-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
     networks:
       - kenya-crm-network
 

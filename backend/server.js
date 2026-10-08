@@ -18,6 +18,7 @@ const taskRoutes = require('./src/routes/tasks');
 const analyticsRoutes = require('./src/routes/analytics');
 const countyRoutes = require('./src/routes/counties');
 const uploadRoutes = require('./src/routes/uploads');
+const jobsRoutes = require('./src/routes/jobs');
 
 const db = require('./src/config/database');
 
@@ -59,13 +60,41 @@ app.use((req, res, next) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
+app.get('/health', async (req, res) => {
+  let dbHealthy = false;
+  let redisHealthy = false;
+
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      await db.query('SELECT 1');
+    } else {
+      await db.query('SELECT 1'); // Both sqlite and mysql support this usually
+    }
+    dbHealthy = true;
+  } catch (e) {
+    logger.error('DB Healthcheck failed', e);
+  }
+
+  try {
+    const { emailQueue } = require('./src/queue/queues');
+    const client = await emailQueue.client;
+    await client.ping();
+    redisHealthy = true;
+  } catch (e) {
+    logger.error('Redis Healthcheck failed', e);
+  }
+
+  res.status((dbHealthy && redisHealthy) ? 200 : 503).json({
+    status: (dbHealthy && redisHealthy) ? 'OK' : 'DEGRADED',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
-    database: process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite'
+    database: process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite',
+    services: {
+      api: 'healthy',
+      database: dbHealthy ? 'healthy' : 'unhealthy',
+      redis: redisHealthy ? 'healthy' : 'unhealthy'
+    }
   });
 });
 
@@ -81,6 +110,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/counties', countyRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/jobs', jobsRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

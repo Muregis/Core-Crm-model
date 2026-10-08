@@ -18,6 +18,8 @@ import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 import LoadingSpinner from './components/LoadingSpinner'
 
+import JobDashboard from './pages/JobDashboard'
+
 function App() {
   const { isAuthenticated, isLoading, initialize } = useAuthStore()
 
@@ -56,6 +58,7 @@ function App() {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/admin/jobs" element={<JobDashboard />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Layout>
