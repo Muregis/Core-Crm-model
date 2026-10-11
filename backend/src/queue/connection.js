@@ -6,6 +6,7 @@ const redisConfig = {
   port: process.env.REDIS_PORT || 6379,
   maxRetriesPerRequest: null,
   retryStrategy(times) {
+    if (process.env.NODE_ENV === 'test') return null;
     logger.warn(`Redis retry connection attempt ${times}`);
     return Math.min(times * 50, 2000);
   }

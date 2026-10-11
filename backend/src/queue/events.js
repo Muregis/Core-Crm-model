@@ -9,10 +9,18 @@ const setupQueueEvents = (queueName) => {
   queueEvents.on('added', async ({ jobId, name }) => {
     logger.info(`Global Event: Job ${jobId} added to ${queueName}`);
     try {
-      await db.query(
-        `INSERT INTO jobs (job_id, type, status, created_at) VALUES (?, ?, 'waiting', NOW()) ON DUPLICATE KEY UPDATE status='waiting', type=?`,
-        [jobId, name, name]
-      );
+      const existing = await db.query('SELECT id FROM jobs WHERE job_id = ?', [jobId]);
+      if (existing && existing.length > 0) {
+        await db.query(
+          'UPDATE jobs SET status = ?, type = ?, updated_at = CURRENT_TIMESTAMP WHERE job_id = ?',
+          ['waiting', name, jobId]
+        );
+      } else {
+        await db.query(
+          'INSERT INTO jobs (job_id, type, status, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+          [jobId, name, 'waiting']
+        );
+      }
     } catch (e) {
       logger.error('Failed to log job added:', e);
     }
@@ -22,8 +30,8 @@ const setupQueueEvents = (queueName) => {
     logger.info(`Global Event: Job ${jobId} active in ${queueName}`);
     try {
       await db.query(
-        `UPDATE jobs SET status = 'active', started_at = NOW(), attempts = attempts + 1 WHERE job_id = ?`,
-        [jobId]
+        'UPDATE jobs SET status = ?, started_at = CURRENT_TIMESTAMP, attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP WHERE job_id = ?',
+        ['active', jobId]
       );
     } catch (e) {
       logger.error('Failed to log job active:', e);
@@ -34,8 +42,8 @@ const setupQueueEvents = (queueName) => {
     logger.info(`Global Event: Job ${jobId} completed in ${queueName}`);
     try {
       await db.query(
-        `UPDATE jobs SET status = 'completed', completed_at = NOW() WHERE job_id = ?`,
-        [jobId]
+        'UPDATE jobs SET status = ?, completed_at = CURRENT_TIMESTAMP, result = ?, updated_at = CURRENT_TIMESTAMP WHERE job_id = ?',
+        ['completed', returnvalue ? JSON.stringify(returnvalue) : null, jobId]
       );
     } catch (e) {
       logger.error('Failed to log job completed:', e);
@@ -46,8 +54,8 @@ const setupQueueEvents = (queueName) => {
     logger.error(`Global Event: Job ${jobId} failed in ${queueName}: ${failedReason}`);
     try {
       await db.query(
-        `UPDATE jobs SET status = 'failed', failed_at = NOW(), error_message = ? WHERE job_id = ?`,
-        [failedReason, jobId]
+        'UPDATE jobs SET status = ?, failed_at = CURRENT_TIMESTAMP, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE job_id = ?',
+        ['failed', failedReason, jobId]
       );
     } catch (e) {
       logger.error('Failed to log job failed:', e);
