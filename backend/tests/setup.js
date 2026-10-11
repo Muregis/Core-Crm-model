@@ -31,6 +31,7 @@ afterAll(async () => {
 afterEach(async () => {
   // Clear transactional tables after each test
   const tables = [
+    'token_blocklist', 'refresh_tokens', 'tenant_credentials',
     'jobs', 'activity_log', 'attachments', 'tasks', 'communications', 'mpesa_transactions', 
     'deals', 'leads', 'customer_tag_relations', 'customer_tags', 
     'customers', 'users', 'tenants'
