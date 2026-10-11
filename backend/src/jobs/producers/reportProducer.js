@@ -13,10 +13,13 @@ async function enqueueReportJob(data) {
       removeOnComplete: false,
       removeOnFail: false,
       jobId: data.idempotencyKey || uuidv4(),
+      // Multi-tenant grouping & priority to prevent single tenant starvation (noisy neighbor)
+      groupId: data.tenantId ? `tenant:${data.tenantId}` : 'default',
+      priority: data.priority || (data.plan === 'enterprise' ? 1 : 5)
     };
 
     const job = await reportQueue.add('generate_sales_report', data, jobOptions);
-    logger.info(`Enqueued report job ${job.id} of type ${data.reportType}`);
+    logger.info(`Enqueued report job ${job.id} of type ${data.reportType} for tenant ${data.tenantId || 'global'}`);
     return job;
   } catch (error) {
     logger.error('Error enqueueing report job:', error);
