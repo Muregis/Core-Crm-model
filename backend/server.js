@@ -22,6 +22,8 @@ const jobsRoutes = require('./src/routes/jobs');
 
 const db = require('./src/config/database');
 
+const { resolveTenant } = require('./src/middleware/tenant');
+
 const app = express();
 
 // Security middleware
@@ -46,6 +48,9 @@ app.use('/api/', limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Tenant resolution from subdomain / headers / token
+app.use(resolveTenant);
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

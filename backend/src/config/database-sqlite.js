@@ -45,6 +45,9 @@ class Database {
     this.createActivityLogTable();
     this.createSystemSettingsTable();
     this.createJobsTable();
+    this.createTenantCredentialsTable();
+    this.createRefreshTokensTable();
+    this.createTokenBlocklistTable();
   }
 
   createTenantsTable() {
@@ -52,7 +55,10 @@ class Database {
       CREATE TABLE IF NOT EXISTS tenants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
+        slug TEXT UNIQUE,
         domain TEXT,
+        kra_pin TEXT,
+        plan TEXT DEFAULT 'starter',
         status TEXT DEFAULT 'active',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -280,20 +286,22 @@ class Database {
       CREATE TABLE IF NOT EXISTS mpesa_transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
-        transaction_id TEXT UNIQUE NOT NULL,
-        customer_id INTEGER NOT NULL,
+        transaction_id TEXT,
+        mpesa_receipt_number TEXT,
+        receipt_number TEXT,
+        customer_id INTEGER,
         deal_id INTEGER,
         amount REAL NOT NULL,
         currency TEXT DEFAULT 'KES',
         phone_number TEXT NOT NULL,
         transaction_type TEXT DEFAULT 'payment',
-        status TEXT DEFAULT 'pending',
+        status TEXT DEFAULT 'completed',
         merchant_request_id TEXT,
         checkout_request_id TEXT,
-        receipt_number TEXT,
         transaction_date TEXT,
+        transaction_time TEXT DEFAULT CURRENT_TIMESTAMP,
         notes TEXT,
-        created_by INTEGER NOT NULL,
+        created_by INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id),
@@ -450,6 +458,75 @@ class Database {
       )
     `;
     this.db.run(sql);
+  }
+
+  createTenantCredentialsTable() {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS tenant_credentials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        shortcode TEXT NOT NULL,
+        key_type TEXT DEFAULT 'paybill',
+        consumer_key_encrypted TEXT NOT NULL,
+        consumer_secret_encrypted TEXT NOT NULL,
+        passkey_encrypted TEXT,
+        iv TEXT NOT NULL,
+        is_sandbox INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+      )
+    `;
+    this.db.run(sql);
+  }
+
+  createRefreshTokensTable() {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token_hash TEXT UNIQUE NOT NULL,
+        expires_at TEXT NOT NULL,
+        revoked INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `;
+    this.db.run(sql);
+  }
+
+  createTokenBlocklistTable() {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS token_blocklist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token_hash TEXT UNIQUE NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    this.db.run(sql);
+  }
+
+  forTenant(tenantId) {
+    if (!tenantId) {
+      throw new Error('Tenant safety violation: tenantId is required for scoped database operations');
+    }
+    const self = this;
+    return {
+      async query(sql, params = []) {
+        const upper = sql.toUpperCase();
+        const tenantTables = ['CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS', 'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS'];
+        const touchesTenantTable = tenantTables.some(t => upper.includes(t));
+        if (touchesTenantTable && !upper.includes('TENANT_ID')) {
+          throw new Error(`Tenant safety violation: query against tenant table lacks tenant_id constraint: ${sql}`);
+        }
+        return self.query(sql, params);
+      },
+      async run(sql, params = []) {
+        return self.run(sql, params);
+      }
+    };
   }
 
   async query(sql, params = []) {

@@ -3,7 +3,11 @@ const { body } = require('express-validator');
 const { protect } = require('../middleware/auth');
 const {
   register,
+  registerTenant,
+  getPublicTenantInfo,
   login,
+  refreshTokenHandler,
+  logout,
   getMe,
   updateProfile,
   changePassword
@@ -36,6 +40,36 @@ const registerValidation = [
     .optional()
     .isIn(['admin', 'manager', 'sales_rep'])
     .withMessage('Invalid role')
+];
+
+const registerTenantValidation = [
+  body('companyName')
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('Company name must be at least 2 characters long'),
+  body('slug')
+    .trim()
+    .matches(/^[a-z0-9-]+$/)
+    .withMessage('Subdomain slug must contain only lowercase alphanumeric characters and hyphens'),
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email'),
+  body('password')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long'),
+  body('firstName')
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('First name must be at least 2 characters long'),
+  body('lastName')
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('Last name must be at least 2 characters long'),
+  body('phone')
+    .optional()
+    .matches(/^\+254\d{9}$/)
+    .withMessage('Phone number must be in Kenyan format (+254XXXXXXXXX)')
 ];
 
 const loginValidation = [
@@ -74,7 +108,11 @@ const changePasswordValidation = [
 
 // Routes
 router.post('/register', registerValidation, register);
+router.post('/register-tenant', registerTenantValidation, registerTenant);
+router.get('/tenant/:slug', getPublicTenantInfo);
 router.post('/login', loginValidation, login);
+router.post('/refresh', refreshTokenHandler);
+router.post('/logout', protect, logout);
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfileValidation, updateProfile);
 router.put('/password', protect, changePasswordValidation, changePassword);

@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 
@@ -10,6 +11,19 @@ const protect = async (req, res, next) => {
     try {
       // Get token from header
       token = req.headers.authorization.split(' ')[1];
+
+      // Check token blocklist
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const blocked = await db.query(
+        'SELECT id FROM token_blocklist WHERE token_hash = ?',
+        [tokenHash]
+      );
+      if (blocked.length > 0) {
+        return res.status(401).json({
+          success: false,
+          message: 'Token has been revoked. Please log in again.'
+        });
+      }
 
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
