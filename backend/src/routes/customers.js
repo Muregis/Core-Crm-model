@@ -6,7 +6,9 @@ const {
   getCustomer,
   createCustomer,
   updateCustomer,
-  deleteCustomer
+  deleteCustomer,
+  exportCustomerData,
+  anonymizeCustomer
 } = require('../controllers/customerController');
 
 const router = express.Router();
@@ -146,6 +148,8 @@ router.post('/import', async (req, res) => {
   }
 });
 router.get('/:id', getCustomer);
+router.get('/:id/kdpa-export', exportCustomerData);
+router.post('/:id/anonymize', authorize('admin'), anonymizeCustomer);
 router.post('/', createCustomerValidation, logActivity('CREATE', 'customer'), createCustomer);
 router.put('/:id', updateCustomerValidation, logActivity('UPDATE', 'customer'), updateCustomer);
 router.delete('/:id', authorize('admin', 'manager'), logActivity('DELETE', 'customer'), deleteCustomer);

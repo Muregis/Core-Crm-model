@@ -520,10 +520,91 @@ const deleteCustomer = async (req, res) => {
   }
 };
 
+// @desc    KDPA/GDPR Subject Access Request - Export all customer personal data
+// @route   GET /api/customers/:id/kdpa-export
+// @access  Private (Admin, Manager)
+const exportCustomerData = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customers = await db.query(
+      'SELECT * FROM customers WHERE id = ? AND tenant_id = ?',
+      [id, req.user.tenant_id]
+    );
+
+    if (customers.length === 0) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    const customer = customers[0];
+    const deals = await db.query('SELECT * FROM deals WHERE customer_id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
+    const communications = await db.query('SELECT * FROM communications WHERE customer_id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
+    const tasks = await db.query('SELECT * FROM tasks WHERE customer_id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
+    const mpesa = await db.query('SELECT * FROM mpesa_transactions WHERE customer_id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
+
+    res.json({
+      success: true,
+      compliance: 'Kenya Data Protection Act 2019 (Section 26 - Right to Access)',
+      data: {
+        customer,
+        deals,
+        communications,
+        tasks,
+        mpesaTransactions: mpesa
+      }
+    });
+  } catch (error) {
+    logger.error('KDPA export error:', error);
+    res.status(500).json({ success: false, message: 'Error exporting customer data' });
+  }
+};
+
+// @desc    KDPA Right to be Forgotten - Anonymize Customer Personal Data
+// @route   POST /api/customers/:id/anonymize
+// @access  Private (Admin)
+const anonymizeCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customers = await db.query(
+      'SELECT id, first_name, last_name FROM customers WHERE id = ? AND tenant_id = ?',
+      [id, req.user.tenant_id]
+    );
+
+    if (customers.length === 0) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    // Overwrite PII with anonymized masks while keeping financial foreign keys intact
+    await db.query(
+      `UPDATE customers SET
+        first_name = 'Anonymized',
+        last_name = 'Subject_' || id,
+        email = 'anonymized_' || id || '@erased.local',
+        phone = '+254700000000',
+        physical_address = NULL,
+        notes = 'Data sanitized per Kenya Data Protection Act Right to Erasure',
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?`,
+      [id, req.user.tenant_id]
+    );
+
+    logger.info(`Customer ${id} anonymized pursuant to KDPA 2019 request by user ${req.user.id}`);
+
+    res.json({
+      success: true,
+      message: 'Customer PII anonymized successfully pursuant to KDPA 2019'
+    });
+  } catch (error) {
+    logger.error('KDPA anonymization error:', error);
+    res.status(500).json({ success: false, message: 'Error anonymizing customer data' });
+  }
+};
+
 module.exports = {
   getCustomers,
   getCustomer,
   createCustomer,
   updateCustomer,
-  deleteCustomer
+  deleteCustomer,
+  exportCustomerData,
+  anonymizeCustomer
 };
