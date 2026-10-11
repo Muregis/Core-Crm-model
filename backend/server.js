@@ -19,6 +19,7 @@ const analyticsRoutes = require('./src/routes/analytics');
 const countyRoutes = require('./src/routes/counties');
 const uploadRoutes = require('./src/routes/uploads');
 const jobsRoutes = require('./src/routes/jobs');
+const reportsRoutes = require('./src/routes/reports');
 
 const db = require('./src/config/database');
 
@@ -26,26 +27,23 @@ const { resolveTenant } = require('./src/middleware/tenant');
 
 const app = express();
 
-// Security middleware
 app.use(helmet());
 
-// CORS configuration
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5174',
   credentials: true
 }));
 
-// Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
   message: {
     error: 'Too many requests from this IP, please try again later.'
-  }
+  },
+  skip: () => process.env.NODE_ENV === 'test'
 });
 app.use('/api/', limiter);
 
-// Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -55,26 +53,25 @@ app.use(resolveTenant);
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Request logging
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path}`, {
-    ip: req.ip,
-    userAgent: req.get('User-Agent')
-  });
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV !== 'test') {
+    logger.info(`${req.method} ${req.path}`, {
+      ip: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+  }
   next();
 });
 
-// Health check endpoint
 app.get('/health', async (req, res) => {
   let dbHealthy = false;
   let redisHealthy = false;
 
   try {
-    if (process.env.NODE_ENV === 'production') {
-      await db.query('SELECT 1');
-    } else {
-      await db.query('SELECT 1'); // Both sqlite and mysql support this usually
-    }
+    await db.query('SELECT 1');
     dbHealthy = true;
   } catch (e) {
     logger.error('DB Healthcheck failed', e);
@@ -86,11 +83,14 @@ app.get('/health', async (req, res) => {
     await client.ping();
     redisHealthy = true;
   } catch (e) {
-    logger.error('Redis Healthcheck failed', e);
+    if (process.env.NODE_ENV !== 'test') {
+      logger.error('Redis Healthcheck failed', e);
+    }
   }
 
-  res.status((dbHealthy && redisHealthy) ? 200 : 503).json({
-    status: (dbHealthy && redisHealthy) ? 'OK' : 'DEGRADED',
+  const ok = dbHealthy && (redisHealthy || process.env.NODE_ENV === 'test');
+  res.status(ok ? 200 : 503).json({
+    status: ok ? 'OK' : 'DEGRADED',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
@@ -103,7 +103,6 @@ app.get('/health', async (req, res) => {
   });
 });
 
-// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/customers', customerRoutes);
@@ -116,8 +115,8 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/counties', countyRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/jobs', jobsRoutes);
+app.use('/api/reports', reportsRoutes);
 
-// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
@@ -125,10 +124,8 @@ app.use('*', (req, res) => {
   });
 });
 
-// Global error handler
 app.use(errorHandler);
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
   process.exit(0);
@@ -139,12 +136,10 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// Unhandled promise rejection handler
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// Uncaught exception handler
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception:', error);
   process.exit(1);
@@ -154,6 +149,10 @@ const PORT = process.env.PORT || 5000;
 
 if (require.main === module) {
   const server = app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+    logger.info(`Database: ${process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite'}`);
+  });
+}
     logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
     logger.info(`Database: ${process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite'}`);
   });

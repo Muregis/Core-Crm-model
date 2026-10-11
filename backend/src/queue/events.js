@@ -26,7 +26,7 @@ const setupQueueEvents = (queueName) => {
     }
   });
 
-  queueEvents.on('active', async ({ jobId, prev }) => {
+  queueEvents.on('active', async ({ jobId }) => {
     logger.info(`Global Event: Job ${jobId} active in ${queueName}`);
     try {
       await db.query(
@@ -41,6 +41,10 @@ const setupQueueEvents = (queueName) => {
   queueEvents.on('completed', async ({ jobId, returnvalue }) => {
     logger.info(`Global Event: Job ${jobId} completed in ${queueName}`);
     try {
+      let resultJson = null;
+      if (returnvalue != null) {
+        resultJson = typeof returnvalue === 'string' ? returnvalue : JSON.stringify(returnvalue);
+      }
       await db.query(
         'UPDATE jobs SET status = ?, completed_at = CURRENT_TIMESTAMP, result = ?, updated_at = CURRENT_TIMESTAMP WHERE job_id = ?',
         ['completed', returnvalue ? JSON.stringify(returnvalue) : null, jobId]
@@ -61,11 +65,10 @@ const setupQueueEvents = (queueName) => {
       logger.error('Failed to log job failed:', e);
     }
   });
-  
+
   return queueEvents;
 };
 
-// Initialize listeners
 const emailEvents = setupQueueEvents('email');
 const reportEvents = setupQueueEvents('report');
 const importEvents = setupQueueEvents('import');
@@ -73,5 +76,5 @@ const importEvents = setupQueueEvents('import');
 module.exports = {
   emailEvents,
   reportEvents,
-  importEvents,
+  importEvents
 };

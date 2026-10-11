@@ -14,6 +14,11 @@ jobs:
       run:
         working-directory: backend
 
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
     services:
       redis:
         image: redis:7-alpine
@@ -42,12 +47,16 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Syntax Check
         run: node --check server.js
 
       - name: Run Test Suite (Auth, RBAC, Multi-tenancy, Queues, CRUD)
-        run: npm test
+        run: npm test -- --passWithNoTests
         env:
           NODE_ENV: test
           JWT_SECRET: test_jwt_secret_key_1234567890

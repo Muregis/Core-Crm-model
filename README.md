@@ -199,3 +199,4 @@ npm run dev
 4. **Token Revocation Blocklist**: Invalidated JWT tokens cannot be used after logout even before token expiration.
 5. **KDPA PII Redaction**: Telephones and sensitive tokens are masked in logger output.
 6. **Defense in Depth**: Helmet security headers, CORS origin restriction, rate limiting, and input validation on all routes.
+

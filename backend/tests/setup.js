@@ -1,8 +1,13 @@
+process.env.NODE_ENV = 'test';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-not-for-production';
+process.env.RATE_LIMIT_MAX_REQUESTS = '10000';
+process.env.REDIS_URL = process.env.REDIS_URL || '';
+
 jest.mock('bullmq', () => {
   return {
     Queue: jest.fn().mockImplementation((name) => ({
       name,
-      add: jest.fn().mockImplementation((jobName, data, opts) => 
+      add: jest.fn().mockImplementation((jobName, data, opts) =>
         Promise.resolve({ id: opts?.jobId || 'mock-job-id', name: jobName, data })
       ),
       getJobCounts: jest.fn().mockResolvedValue({ active: 0, completed: 0, failed: 0 }),
@@ -29,11 +34,10 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
-  // Clear transactional tables after each test
   const tables = [
     'token_blocklist', 'refresh_tokens', 'tenant_credentials',
-    'jobs', 'activity_log', 'attachments', 'tasks', 'communications', 'mpesa_transactions', 
-    'deals', 'leads', 'customer_tag_relations', 'customer_tags', 
+    'jobs', 'activity_log', 'attachments', 'tasks', 'communications', 'mpesa_transactions',
+    'deals', 'leads', 'customer_tag_relations', 'customer_tags',
     'customers', 'users', 'tenants'
   ];
   for (const table of tables) {
