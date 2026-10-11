@@ -16,7 +16,7 @@ const protect = async (req, res, next) => {
 
       // Get user from database
       const users = await db.query(
-        'SELECT id, email, first_name, last_name, role, is_active FROM users WHERE id = ?',
+        'SELECT id, tenant_id, email, first_name, last_name, role, is_active FROM users WHERE id = ?',
         [decoded.id]
       );
 
@@ -86,9 +86,10 @@ const logActivity = (action, entityType) => {
         const newValues = req.body || null;
 
         await db.query(
-          `INSERT INTO activity_log (user_id, action, entity_type, entity_id, old_values, new_values, ip_address, user_agent)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO activity_log (tenant_id, user_id, action, entity_type, entity_id, old_values, new_values, ip_address, user_agent)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
+            req.user.tenant_id,
             req.user.id,
             action,
             entityType,

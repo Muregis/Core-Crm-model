@@ -18,72 +18,47 @@ const register = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation errors',
-        errors: errors.array()
-      });
+      return res.status(400).json({ success: false, message: 'Validation errors', errors: errors.array() });
     }
 
-    const { email, password, firstName, lastName, phone, role = 'sales_rep' } = req.body;
+    const { email, password, firstName, lastName, phone, role = 'sales_rep', tenantName } = req.body;
 
-    // Check if user exists
-    const existingUsers = await db.query(
-      'SELECT id FROM users WHERE email = ?',
-      [email]
-    );
-
+    const existingUsers = await db.query('SELECT id FROM users WHERE email = ?', [email]);
     if (existingUsers.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'User already exists'
-      });
+      return res.status(400).json({ success: false, message: 'User already exists' });
     }
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Create user
-    const result = await db.query(
-      `INSERT INTO users (email, password_hash, first_name, last_name, phone, role)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [email, passwordHash, firstName, lastName, phone, role]
-    );
+    // Transaction for tenant and user creation
+    await db.transaction(async (trx) => {
+      let tName = tenantName || (firstName + "'s Organization");
+      const tResult = await trx.run('INSERT INTO tenants (name) VALUES (?)', [tName]);
+      const tenantId = tResult.insertId || tResult.id;
 
-    // Get created user
-    const users = await db.query(
-      'SELECT id, email, first_name, last_name, phone, role, created_at FROM users WHERE id = ?',
-      [result.insertId]
-    );
+      const result = await trx.run(
+        'INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, phone, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [tenantId, email, passwordHash, firstName, lastName, phone, role]
+      );
+      const userId = result.insertId || result.id;
 
-    const user = users[0];
-
-    // Generate token
-    const token = generateToken(user.id);
-
-    // Update last login
-    await db.query(
-      'UPDATE users SET last_login = NOW() WHERE id = ?',
-      [user.id]
-    );
-
-    logger.info(`New user registered: ${email}`);
-
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully',
-      data: {
-        user,
-        token
-      }
+      const users = await trx.query(
+        'SELECT id, tenant_id, email, first_name, last_name, phone, role, created_at FROM users WHERE id = ?',
+        [userId]
+      );
+      const user = users[0];
+      const token = generateToken(user.id);
+      
+      await trx.run('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+      
+      logger.info('New user registered: ' + email);
+      res.status(201).json({ success: true, message: 'User registered successfully', data: { user, token } });
     });
+
   } catch (error) {
     logger.error('Registration error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during registration'
-    });
+    res.status(500).json({ success: false, message: 'Server error during registration' });
   }
 };
 
@@ -105,7 +80,7 @@ const login = async (req, res) => {
 
     // Check if user exists
     const users = await db.query(
-      'SELECT id, email, password_hash, first_name, last_name, phone, role, is_active FROM users WHERE email = ?',
+      'SELECT id, tenant_id, email, password_hash, first_name, last_name, phone, role, is_active FROM users WHERE email = ?',
       [email]
     );
 
@@ -140,7 +115,7 @@ const login = async (req, res) => {
 
     // Update last login
     await db.query(
-      'UPDATE users SET last_login = NOW() WHERE id = ?',
+      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?',
       [user.id]
     );
 
@@ -172,7 +147,7 @@ const login = async (req, res) => {
 const getMe = async (req, res) => {
   try {
     const users = await db.query(
-      `SELECT id, email, first_name, last_name, phone, role, is_active, last_login, created_at
+      `SELECT id, tenant_id, email, first_name, last_name, phone, role, is_active, last_login, created_at
        FROM users WHERE id = ?`,
       [req.user.id]
     );
@@ -231,7 +206,7 @@ const updateProfile = async (req, res) => {
 
     // Get updated user
     const users = await db.query(
-      `SELECT id, email, first_name, last_name, phone, role, is_active, last_login, created_at
+      `SELECT id, tenant_id, email, first_name, last_name, phone, role, is_active, last_login, created_at
        FROM users WHERE id = ?`,
       [req.user.id]
     );

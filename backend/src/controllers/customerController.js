@@ -21,8 +21,15 @@ const getCustomers = async (req, res) => {
     } = req.query;
 
     const offset = (page - 1) * limit;
-    let whereClause = 'WHERE 1=1';
-    const params = [];
+    let whereClause = 'WHERE c.tenant_id = ?';
+    const params = [req.user.tenant_id];
+
+    // If role is sales_rep, they should only see their assigned customers or all tenant customers?
+    // Let's implement RBAC: sales_rep sees only assigned customers, managers and admins see all
+    if (req.user.role === 'sales_rep') {
+      whereClause += ' AND c.assigned_sales_rep_id = ?';
+      params.push(req.user.id);
+    }
 
     // Build WHERE clause
     if (search) {
@@ -52,7 +59,7 @@ const getCustomers = async (req, res) => {
     }
 
     if (salesRep) {
-      whereClause += ` AND CONCAT(u.first_name, ' ', u.last_name) LIKE ?`;
+      whereClause += ` AND (u.first_name || ' ' || u.last_name) LIKE ?`;
       params.push(`%${salesRep}%`);
     }
 
@@ -65,6 +72,7 @@ const getCustomers = async (req, res) => {
     const customers = await db.query(`
       SELECT 
         c.id,
+        c.tenant_id,
         c.first_name,
         c.last_name,
         c.email,
@@ -78,7 +86,7 @@ const getCustomers = async (req, res) => {
         co.name as county_name,
         sc.name as sub_county_name,
         bc.name as business_category,
-        CONCAT(u.first_name, ' ', u.last_name) as sales_rep_name,
+        (u.first_name || ' ' || u.last_name) as sales_rep_name,
         u.email as sales_rep_email,
         (SELECT COUNT(*) FROM deals WHERE customer_id = c.id AND status = 'won') as won_deals_count,
         (SELECT COALESCE(SUM(value), 0) FROM deals WHERE customer_id = c.id AND status = 'won') as total_revenue,
@@ -140,7 +148,7 @@ const getCustomer = async (req, res) => {
         co.name as county_name,
         sc.name as sub_county_name,
         bc.name as business_category,
-        CONCAT(u.first_name, ' ', u.last_name) as sales_rep_name,
+        (u.first_name || ' ' || u.last_name) as sales_rep_name,
         u.email as sales_rep_email,
         u.phone as sales_rep_phone
       FROM customers c
@@ -148,8 +156,8 @@ const getCustomer = async (req, res) => {
       LEFT JOIN sub_counties sc ON c.sub_county_id = sc.id
       LEFT JOIN business_categories bc ON c.business_category_id = bc.id
       LEFT JOIN users u ON c.assigned_sales_rep_id = u.id
-      WHERE c.id = ?
-    `, [id]);
+      WHERE c.id = ? AND c.tenant_id = ?
+    `, [id, req.user.tenant_id]);
 
     if (customers.length === 0) {
       return res.status(404).json({
@@ -159,6 +167,14 @@ const getCustomer = async (req, res) => {
     }
 
     const customer = customers[0];
+
+    // RBAC: If sales_rep, check if assigned
+    if (req.user.role === 'sales_rep' && customer.assigned_sales_rep_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: Customer not assigned to you'
+      });
+    }
 
     // Get customer tags
     const tags = await db.query(`
@@ -268,10 +284,10 @@ const createCustomer = async (req, res) => {
       tags
     } = req.body;
 
-    // Check for duplicate email or phone
+    // Check for duplicate email or phone within tenant
     const existingCustomers = await db.query(
-      'SELECT id FROM customers WHERE email = ? OR phone = ?',
-      [email, phone]
+      'SELECT id FROM customers WHERE tenant_id = ? AND (email = ? OR phone = ?)',
+      [req.user.tenant_id, email, phone]
     );
 
     if (existingCustomers.length > 0) {
@@ -284,11 +300,12 @@ const createCustomer = async (req, res) => {
     // Create customer
     const result = await db.query(`
       INSERT INTO customers (
-        first_name, last_name, email, phone, company_name,
+        tenant_id, first_name, last_name, email, phone, company_name,
         business_category_id, county_id, sub_county_id, physical_address,
         customer_type, status, notes, assigned_sales_rep_id, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
+      req.user.tenant_id,
       firstName, lastName, email, phone, companyName,
       businessCategoryId, countyId, subCountyId, physicalAddress,
       customerType, status, notes, assignedSalesRepId || req.user.id, req.user.id
@@ -300,8 +317,8 @@ const createCustomer = async (req, res) => {
     if (tags && tags.length > 0) {
       for (const tagId of tags) {
         await db.query(
-          'INSERT INTO customer_tag_relations (customer_id, tag_id) VALUES (?, ?)',
-          [customerId, tagId]
+          'INSERT INTO customer_tag_relations (tenant_id, customer_id, tag_id) VALUES (?, ?, ?)',
+          [req.user.tenant_id, customerId, tagId]
         );
       }
     }
@@ -313,14 +330,14 @@ const createCustomer = async (req, res) => {
         co.name as county_name,
         sc.name as sub_county_name,
         bc.name as business_category,
-        CONCAT(u.first_name, ' ', u.last_name) as sales_rep_name
+        (u.first_name || ' ' || u.last_name) as sales_rep_name
       FROM customers c
       LEFT JOIN counties co ON c.county_id = co.id
       LEFT JOIN sub_counties sc ON c.sub_county_id = sc.id
       LEFT JOIN business_categories bc ON c.business_category_id = bc.id
       LEFT JOIN users u ON c.assigned_sales_rep_id = u.id
-      WHERE c.id = ?
-    `, [customerId]);
+      WHERE c.id = ? AND c.tenant_id = ?
+    `, [customerId, req.user.tenant_id]);
 
     logger.info(`Customer created: ${firstName} ${lastName} (${email})`);
 
@@ -370,8 +387,8 @@ const updateCustomer = async (req, res) => {
       tags
     } = req.body;
 
-    // Check if customer exists
-    const existingCustomers = await db.query('SELECT * FROM customers WHERE id = ?', [id]);
+    // Check if customer exists in the same tenant
+    const existingCustomers = await db.query('SELECT * FROM customers WHERE id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
     if (existingCustomers.length === 0) {
       return res.status(404).json({
         success: false,
@@ -379,10 +396,18 @@ const updateCustomer = async (req, res) => {
       });
     }
 
+    // RBAC: If sales_rep, check assignment
+    if (req.user.role === 'sales_rep' && existingCustomers[0].assigned_sales_rep_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You can only update customers assigned to you'
+      });
+    }
+
     // Check for duplicate email or phone (excluding current customer)
     const duplicateCustomers = await db.query(
-      'SELECT id FROM customers WHERE (email = ? OR phone = ?) AND id != ?',
-      [email, phone, id]
+      'SELECT id FROM customers WHERE tenant_id = ? AND (email = ? OR phone = ?) AND id != ?',
+      [req.user.tenant_id, email, phone, id]
     );
 
     if (duplicateCustomers.length > 0) {
@@ -399,24 +424,22 @@ const updateCustomer = async (req, res) => {
         business_category_id = ?, county_id = ?, sub_county_id = ?, physical_address = ?,
         customer_type = ?, status = ?, notes = ?, assigned_sales_rep_id = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
+      WHERE id = ? AND tenant_id = ?
     `, [
       firstName, lastName, email, phone, companyName,
       businessCategoryId, countyId, subCountyId, physicalAddress,
-      customerType, status, notes, assignedSalesRepId, id
+      customerType, status, notes, assignedSalesRepId, id, req.user.tenant_id
     ]);
 
     // Update tags if provided
     if (tags !== undefined) {
-      // Remove existing tags
-      await db.query('DELETE FROM customer_tag_relations WHERE customer_id = ?', [id]);
+      await db.query('DELETE FROM customer_tag_relations WHERE customer_id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
 
-      // Add new tags
       if (tags.length > 0) {
         for (const tagId of tags) {
           await db.query(
-            'INSERT INTO customer_tag_relations (customer_id, tag_id) VALUES (?, ?)',
-            [id, tagId]
+            'INSERT INTO customer_tag_relations (tenant_id, customer_id, tag_id) VALUES (?, ?, ?)',
+            [req.user.tenant_id, id, tagId]
           );
         }
       }
@@ -429,14 +452,14 @@ const updateCustomer = async (req, res) => {
         co.name as county_name,
         sc.name as sub_county_name,
         bc.name as business_category,
-        CONCAT(u.first_name, ' ', u.last_name) as sales_rep_name
+        (u.first_name || ' ' || u.last_name) as sales_rep_name
       FROM customers c
       LEFT JOIN counties co ON c.county_id = co.id
       LEFT JOIN sub_counties sc ON c.sub_county_id = sc.id
       LEFT JOIN business_categories bc ON c.business_category_id = bc.id
       LEFT JOIN users u ON c.assigned_sales_rep_id = u.id
-      WHERE c.id = ?
-    `, [id]);
+      WHERE c.id = ? AND c.tenant_id = ?
+    `, [id, req.user.tenant_id]);
 
     logger.info(`Customer updated: ${firstName} ${lastName} (${email})`);
 
@@ -456,13 +479,13 @@ const updateCustomer = async (req, res) => {
 
 // @desc    Delete customer
 // @route   DELETE /api/customers/:id
-// @access  Private
+// @access  Private (Admin/Manager only via route middleware)
 const deleteCustomer = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if customer exists
-    const customers = await db.query('SELECT * FROM customers WHERE id = ?', [id]);
+    // Check if customer exists in current tenant
+    const customers = await db.query('SELECT * FROM customers WHERE id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
     if (customers.length === 0) {
       return res.status(404).json({
         success: false,
@@ -471,7 +494,7 @@ const deleteCustomer = async (req, res) => {
     }
 
     // Check if customer has related records
-    const deals = await db.query('SELECT COUNT(*) as count FROM deals WHERE customer_id = ?', [id]);
+    const deals = await db.query('SELECT COUNT(*) as count FROM deals WHERE customer_id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
     if (deals[0].count > 0) {
       return res.status(400).json({
         success: false,
@@ -479,8 +502,8 @@ const deleteCustomer = async (req, res) => {
       });
     }
 
-    // Delete customer (related records will be deleted due to foreign key constraints)
-    await db.query('DELETE FROM customers WHERE id = ?', [id]);
+    // Delete customer
+    await db.query('DELETE FROM customers WHERE id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
 
     logger.info(`Customer deleted: ${customers[0].first_name} ${customers[0].last_name}`);
 

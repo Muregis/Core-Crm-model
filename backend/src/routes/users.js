@@ -7,15 +7,17 @@ const router = express.Router();
 // All routes are protected
 router.use(protect);
 
-// @desc    Get all users (admin/manager only)
+// @desc    Get all users for current tenant (admin/manager only)
 // @route   GET /api/users
 // @access  Private/Admin/Manager
 router.get('/', authorize('admin', 'manager'), async (req, res) => {
   try {
     const users = await db.query(
-      `SELECT id, email, first_name, last_name, phone, role, is_active, last_login, created_at
+      `SELECT id, tenant_id, email, first_name, last_name, phone, role, is_active, last_login, created_at
        FROM users 
-       ORDER BY created_at DESC`
+       WHERE tenant_id = ?
+       ORDER BY created_at DESC`,
+      [req.user.tenant_id]
     );
 
     res.json({
