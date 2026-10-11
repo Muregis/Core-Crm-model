@@ -147,9 +147,11 @@ process.on('uncaughtException', (error) => {
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
-  logger.info(`Database: ${process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite'}`);
-});
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+    logger.info(`Database: ${process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite'}`);
+  });
+}
 
 module.exports = app;
