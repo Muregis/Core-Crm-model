@@ -54,6 +54,8 @@ class Database {
       this.createTokenBlocklistTable();
       this.createParcelsTable();
       this.createParcelStatusHistoryTable();
+      this.createMattersTable();
+      this.createMatterTimeEntriesTable();
 
       this.db.run('SELECT 1', (err) => {
         if (err) logger.error('Schema ready check failed:', err);
@@ -553,6 +555,61 @@ class Database {
     `);
   }
 
+  createMattersTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS matters (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        case_number TEXT,
+        title TEXT NOT NULL,
+        client_id INTEGER NOT NULL,
+        practice_area TEXT DEFAULT 'General Practice',
+        court_name TEXT,
+        judge_or_arbitrator TEXT,
+        opposing_party TEXT,
+        opposing_counsel TEXT,
+        billing_type TEXT DEFAULT 'fixed_fee',
+        fee_amount_kes REAL,
+        hourly_rate_kes REAL,
+        status TEXT NOT NULL DEFAULT 'active',
+        priority TEXT DEFAULT 'medium',
+        next_hearing_date TEXT,
+        filing_deadline TEXT,
+        assigned_advocate_id INTEGER,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (client_id) REFERENCES customers(id),
+        FOREIGN KEY (assigned_advocate_id) REFERENCES users(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_matters_tenant_status ON matters(tenant_id, status)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_matters_tenant_client ON matters(tenant_id, client_id)');
+  }
+
+  createMatterTimeEntriesTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS matter_time_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        matter_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        activity_type TEXT DEFAULT 'drafting',
+        duration_minutes INTEGER NOT NULL,
+        hourly_rate_kes REAL,
+        billable_amount_kes REAL,
+        date TEXT,
+        description TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (matter_id) REFERENCES matters(id),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_matter_time_tenant ON matter_time_entries(tenant_id, matter_id)');
+  }
+
   forTenant(tenantId) {
     if (!tenantId) {
       throw new Error('Tenant safety violation: tenantId is required for scoped database operations');
@@ -563,7 +620,8 @@ class Database {
         const upper = sql.toUpperCase();
         const tenantTables = [
           'CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS',
-          'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS', 'PARCELS', 'PARCEL_STATUS_HISTORY'
+          'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS', 'PARCELS', 'PARCEL_STATUS_HISTORY',
+          'MATTERS', 'MATTER_TIME_ENTRIES'
         ];
         const touchesTenantTable = tenantTables.some((t) => upper.includes(t));
         if (touchesTenantTable && !upper.includes('TENANT_ID')) {

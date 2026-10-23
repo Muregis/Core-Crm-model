@@ -17,6 +17,7 @@ import Tasks from './pages/Tasks'
 import Mpesa from './pages/Mpesa'
 import Communications from './pages/Communications'
 import Parcels from './pages/Parcels'
+import Matters from './pages/Matters'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 import LoadingSpinner from './components/LoadingSpinner'
@@ -62,6 +63,7 @@ function App() {
         <Route path="/mpesa" element={<Mpesa />} />
         <Route path="/communications" element={<Communications />} />
         <Route path="/parcels" element={<Parcels />} />
+        <Route path="/matters" element={<Matters />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin/jobs" element={<JobDashboard />} />

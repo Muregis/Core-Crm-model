@@ -60,6 +60,8 @@ afterEach(async () => {
     'tenant_credentials',
     'parcel_status_history',
     'parcels',
+    'matter_time_entries',
+    'matters',
     'jobs',
     'activity_log',
     'attachments',

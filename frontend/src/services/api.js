@@ -31,15 +31,16 @@ api.interceptors.response.use(
   (error) => {
     // Handle common errors
     if (error.response?.status === 401) {
-      // Unauthorized - clear persisted auth and redirect to login (avoid store import cycles).
-      try {
-        localStorage.removeItem('auth-storage')
-      } catch {
-        // Ignore storage failures (private mode, permissions, etc.).
+      const isAuthEndpoint = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/auth/register')
+      if (!isAuthEndpoint && window.location.pathname !== '/login') {
+        try {
+          localStorage.removeItem('auth-storage')
+        } catch {
+          // Ignore storage failures
+        }
+        delete api.defaults.headers.common['Authorization']
+        window.location.href = '/login'
       }
-
-      delete api.defaults.headers.common['Authorization']
-      window.location.href = '/login'
     } else if (error.response?.status === 403) {
       // Forbidden
       toast.error('You do not have permission to perform this action')

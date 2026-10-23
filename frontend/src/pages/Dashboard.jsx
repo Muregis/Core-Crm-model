@@ -1,7 +1,19 @@
 // Dashboard.jsx
 // Primary overview page: stats, recent activity, upcoming tasks, and quick actions.
 import React from 'react'
-import { Users, Target, Briefcase, TrendingUp, Phone, CreditCard, MessageSquare, CheckSquare } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { 
+  Users, 
+  Target, 
+  Briefcase, 
+  TrendingUp, 
+  Phone, 
+  CreditCard, 
+  MessageSquare, 
+  CheckSquare, 
+  Layers, 
+  Scale 
+} from 'lucide-react'
 import { formatCurrencyKES, formatDateKe } from '../utils/formatters'
 
 const Dashboard = () => {
@@ -194,9 +206,9 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="card-footer">
-              <button className="text-sm text-primary-600 hover:text-primary-500 font-medium">
+              <Link to="/tasks" className="text-sm text-primary-600 hover:text-primary-500 font-medium inline-block">
                 View all tasks →
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -205,26 +217,34 @@ const Dashboard = () => {
       {/* Quick Actions */}
       <div className="card">
         <div className="card-header">
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Quick Actions</h3>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Quick Actions & Modules</h3>
         </div>
         <div className="card-body">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <button className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950">
-              <Users className="h-8 w-8 text-primary-600 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Add Customer</span>
-            </button>
-            <button className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950">
-              <Target className="h-8 w-8 text-primary-600 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Create Lead</span>
-            </button>
-            <button className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950">
-              <Briefcase className="h-8 w-8 text-primary-600 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">New Deal</span>
-            </button>
-            <button className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950">
-              <CheckSquare className="h-8 w-8 text-primary-600 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Add Task</span>
-            </button>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            <Link to="/customers" className="flex flex-col items-center p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950 text-center">
+              <Users className="h-7 w-7 text-primary-600 mb-2" />
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Customers</span>
+            </Link>
+            <Link to="/leads" className="flex flex-col items-center p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950 text-center">
+              <Target className="h-7 w-7 text-emerald-600 mb-2" />
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Leads</span>
+            </Link>
+            <Link to="/deals" className="flex flex-col items-center p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950 text-center">
+              <Briefcase className="h-7 w-7 text-amber-600 mb-2" />
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Pipeline Deals</span>
+            </Link>
+            <Link to="/parcels" className="flex flex-col items-center p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950 text-center">
+              <Layers className="h-7 w-7 text-green-600 mb-2" />
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Land & Parcels</span>
+            </Link>
+            <Link to="/matters" className="flex flex-col items-center p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950 text-center">
+              <Scale className="h-7 w-7 text-purple-600 mb-2" />
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Legal Matters</span>
+            </Link>
+            <Link to="/mpesa" className="flex flex-col items-center p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-950 text-center">
+              <CreditCard className="h-7 w-7 text-emerald-600 mb-2" />
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">M-Pesa Vault</span>
+            </Link>
           </div>
         </div>
       </div>

@@ -21,6 +21,7 @@ const uploadRoutes = require('./src/routes/uploads');
 const jobsRoutes = require('./src/routes/jobs');
 const reportsRoutes = require('./src/routes/reports');
 const parcelRoutes = require('./src/routes/parcels');
+const matterRoutes = require('./src/routes/matters');
 
 const db = require('./src/config/database');
 const { resolveTenant } = require('./src/middleware/tenant');
@@ -30,7 +31,7 @@ const app = express();
 app.use(helmet());
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5174',
+  origin: (origin, callback) => callback(null, true),
   credentials: true
 }));
 
@@ -77,7 +78,9 @@ app.get('/health', async (req, res) => {
   try {
     const { emailQueue } = require('./src/queue/queues');
     const client = await emailQueue.client;
-    await client.ping();
+    if (client && typeof client.ping === 'function') {
+      await client.ping();
+      }
     redisHealthy = true;
   } catch (e) {
     if (process.env.NODE_ENV !== 'test') {
@@ -114,6 +117,7 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/parcels', parcelRoutes);
+app.use('/api/matters', matterRoutes);
 
 app.use('*', (req, res) => {
   res.status(404).json({

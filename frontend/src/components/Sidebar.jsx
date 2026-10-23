@@ -13,7 +13,8 @@ import {
   Phone,
   CreditCard,
   MessageSquare,
-  Layers
+  Layers,
+  Scale
 } from 'lucide-react'
 import { cn } from '../utils/cn'
 import { useAuthStore } from '../store/authStore'
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Leads', href: '/leads', icon: Target },
   { name: 'Deals', href: '/deals', icon: Briefcase },
   { name: 'Land & Parcels', href: '/parcels', icon: Layers },
+  { name: 'Legal Matters', href: '/matters', icon: Scale },
   { name: 'M-Pesa', href: '/mpesa', icon: CreditCard },
   { name: 'Communications', href: '/communications', icon: MessageSquare },
   { name: 'Tasks', href: '/tasks', icon: CheckSquare },

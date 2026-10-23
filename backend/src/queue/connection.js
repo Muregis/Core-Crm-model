@@ -7,8 +7,12 @@ const redisConfig = {
   maxRetriesPerRequest: null,
   retryStrategy(times) {
     if (process.env.NODE_ENV === 'test') return null;
+    if (times > 3) {
+      logger.warn('Redis connection inactive. Queues running in local fallback mode.');
+      return null;
+    }
     logger.warn(`Redis retry connection attempt ${times}`);
-    return Math.min(times * 50, 2000);
+    return Math.min(times * 100, 1000);
   }
 };
 

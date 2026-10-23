@@ -484,3 +484,52 @@ CREATE TABLE IF NOT EXISTS parcel_status_history (
     FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE CASCADE,
     FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Legal Matters & Cases (Industry Pack 2)
+CREATE TABLE IF NOT EXISTS matters (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    case_number VARCHAR(100),
+    title VARCHAR(255) NOT NULL,
+    client_id INT NOT NULL,
+    practice_area VARCHAR(100) DEFAULT 'General Practice',
+    court_name VARCHAR(150),
+    judge_or_arbitrator VARCHAR(150),
+    opposing_party VARCHAR(255),
+    opposing_counsel VARCHAR(255),
+    billing_type ENUM('fixed_fee', 'hourly', 'retainer', 'pro_bono') DEFAULT 'fixed_fee',
+    fee_amount_kes DECIMAL(14, 2),
+    hourly_rate_kes DECIMAL(10, 2),
+    status ENUM('active', 'pending_hearing', 'closed', 'on_hold') DEFAULT 'active',
+    priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
+    next_hearing_date DATE,
+    filing_deadline DATE,
+    assigned_advocate_id INT,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES customers(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_advocate_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_matters_status (tenant_id, status),
+    INDEX idx_matters_client (tenant_id, client_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Legal Matter Time Entries
+CREATE TABLE IF NOT EXISTS matter_time_entries (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    matter_id INT NOT NULL,
+    user_id INT NOT NULL,
+    activity_type VARCHAR(100) DEFAULT 'drafting',
+    duration_minutes INT NOT NULL,
+    hourly_rate_kes DECIMAL(10, 2),
+    billable_amount_kes DECIMAL(12, 2),
+    date DATE,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (matter_id) REFERENCES matters(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_matter_time_tenant (tenant_id, matter_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
