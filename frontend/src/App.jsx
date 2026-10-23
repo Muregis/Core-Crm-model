@@ -18,6 +18,7 @@ import Mpesa from './pages/Mpesa'
 import Communications from './pages/Communications'
 import Parcels from './pages/Parcels'
 import Matters from './pages/Matters'
+import Invoices from './pages/Invoices'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 import LoadingSpinner from './components/LoadingSpinner'
@@ -64,6 +65,7 @@ function App() {
         <Route path="/communications" element={<Communications />} />
         <Route path="/parcels" element={<Parcels />} />
         <Route path="/matters" element={<Matters />} />
+        <Route path="/invoices" element={<Invoices />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin/jobs" element={<JobDashboard />} />

@@ -6,7 +6,11 @@ const {
   getParcel,
   createParcel,
   updateParcel,
-  deleteParcel
+  deleteParcel,
+  getPlotMatrix,
+  reserveParcelWithHold,
+  releaseParcelHold,
+  convertHoldToSale
 } = require('../controllers/parcelController');
 
 const router = express.Router();
@@ -24,6 +28,13 @@ const createValidation = [
   body('dealId').optional({ nullable: true }).isInt({ min: 1 }),
   body('ownerCustomerId').optional({ nullable: true }).isInt({ min: 1 })
 ];
+
+
+// Plot Matrix endpoints
+router.get('/matrix/overview', getPlotMatrix);
+router.post('/:id/hold', reserveParcelWithHold);
+router.post('/:id/release-hold', releaseParcelHold);
+router.post('/:id/convert-sale', convertHoldToSale);
 
 router.route('/').get(getParcels).post(createValidation, createParcel);
 

@@ -14,7 +14,8 @@ import {
   CreditCard,
   MessageSquare,
   Layers,
-  Scale
+  Scale,
+  FileText
 } from 'lucide-react'
 import { cn } from '../utils/cn'
 import { useAuthStore } from '../store/authStore'
@@ -35,9 +36,13 @@ const Sidebar = ({ isOpen, onClose }) => {
     { name: customersLabel, href: '/customers', icon: Users },
     { name: leadsLabel, href: '/leads', icon: Target },
     { name: dealsLabel, href: '/deals', icon: Briefcase },
+    // Commercial Core Pack: Invoices & eTIMS Quotes (Active for Commercial & Multi-Discipline)
+    ...((industry === 'general' || industry === 'all') ? [
+      { name: 'Invoices & Quotes', href: '/invoices', icon: FileText }
+    ] : []),
     // Land & Property Pack (Active for Real Estate & Multi-Discipline firms)
     ...((industry === 'real_estate' || industry === 'all') ? [
-      { name: 'Land & Parcels', href: '/parcels', icon: Layers }
+      { name: 'Plot Matrix & Land', href: '/parcels', icon: Layers }
     ] : []),
     // Legal Practice Pack (Active for Law Firms & Multi-Discipline firms)
     ...((industry === 'legal' || industry === 'all') ? [

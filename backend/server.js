@@ -22,6 +22,9 @@ const jobsRoutes = require('./src/routes/jobs');
 const reportsRoutes = require('./src/routes/reports');
 const parcelRoutes = require('./src/routes/parcels');
 const matterRoutes = require('./src/routes/matters');
+const conveyancingRoutes = require('./src/routes/conveyancing');
+const productRoutes = require('./src/routes/products');
+const invoiceRoutes = require('./src/routes/invoices');
 
 const db = require('./src/config/database');
 const { resolveTenant } = require('./src/middleware/tenant');
@@ -118,6 +121,9 @@ app.use('/api/jobs', jobsRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/parcels', parcelRoutes);
 app.use('/api/matters', matterRoutes);
+app.use('/api/conveyancing', conveyancingRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/invoices', invoiceRoutes);
 
 app.use('*', (req, res) => {
   res.status(404).json({

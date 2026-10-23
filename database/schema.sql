@@ -543,3 +543,150 @@ CREATE TABLE IF NOT EXISTS matter_time_entries (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_matter_time_tenant (tenant_id, matter_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Plot Matrix State Machine & Timed Reservation Holds (Real Estate Pack)
+CREATE TABLE IF NOT EXISTS parcel_reservations (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    parcel_id INT NOT NULL,
+    customer_id INT,
+    deal_id INT,
+    letter_of_offer_ref VARCHAR(100),
+    hold_duration_hours INT DEFAULT 48,
+    expires_at DATETIME NOT NULL,
+    status ENUM('active_hold', 'converted_to_sale', 'expired', 'released') DEFAULT 'active_hold',
+    deposit_required_kes DECIMAL(14, 2) DEFAULT 0.00,
+    notes TEXT,
+    created_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE CASCADE,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+    FOREIGN KEY (deal_id) REFERENCES deals(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_res_tenant_status (tenant_id, status),
+    INDEX idx_res_parcel (parcel_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- "Lipa Mdogo Mdogo" Deal Installments & Amortization
+CREATE TABLE IF NOT EXISTS deal_installments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    deal_id INT NOT NULL,
+    parcel_id INT,
+    customer_id INT NOT NULL,
+    installment_number INT NOT NULL,
+    title VARCHAR(150) NOT NULL,
+    due_date DATE NOT NULL,
+    amount_kes DECIMAL(14, 2) NOT NULL,
+    paid_amount_kes DECIMAL(14, 2) DEFAULT 0.00,
+    status ENUM('pending', 'partial', 'paid', 'overdue') DEFAULT 'pending',
+    mpesa_receipt_number VARCHAR(100),
+    paid_at DATETIME,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (deal_id) REFERENCES deals(id) ON DELETE CASCADE,
+    FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE SET NULL,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+    INDEX idx_inst_tenant_deal (tenant_id, deal_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ArdhiSasa & Land Conveyancing Pipeline
+CREATE TABLE IF NOT EXISTS conveyancing_matters (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    deal_id INT,
+    parcel_id INT NOT NULL,
+    customer_id INT NOT NULL,
+    stage ENUM('search_due_diligence', 'beacon_mutation', 'lcb_consent', 'stamp_duty_valuation', 'title_issuance_handover') DEFAULT 'search_due_diligence',
+    search_ref VARCHAR(100),
+    search_status VARCHAR(50) DEFAULT 'pending',
+    beacon_cert_number VARCHAR(100),
+    mutation_form_ref VARCHAR(100),
+    lcb_board_name VARCHAR(150),
+    lcb_hearing_date DATE,
+    lcb_consent_ref VARCHAR(100),
+    valuation_amount_kes DECIMAL(14, 2) DEFAULT 0.00,
+    stamp_duty_amount_kes DECIMAL(14, 2) DEFAULT 0.00,
+    cgt_clearance_ref VARCHAR(100),
+    title_deed_number VARCHAR(100),
+    title_collection_date DATE,
+    assigned_advocate_id INT,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (deal_id) REFERENCES deals(id) ON DELETE SET NULL,
+    FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE CASCADE,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_advocate_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_conv_tenant_stage (tenant_id, stage)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Products & Services Catalog (Commercial Core)
+CREATE TABLE IF NOT EXISTS products (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    sku VARCHAR(100) NOT NULL,
+    category VARCHAR(100) DEFAULT 'General',
+    unit VARCHAR(50) DEFAULT 'unit',
+    unit_price_kes DECIMAL(14, 2) NOT NULL,
+    cost_price_kes DECIMAL(14, 2) DEFAULT 0.00,
+    tax_rate DECIMAL(5, 2) DEFAULT 16.00,
+    stock_quantity INT DEFAULT 0,
+    status ENUM('active', 'archived') DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_tenant_sku (tenant_id, sku),
+    INDEX idx_prod_tenant_status (tenant_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Invoices & Itemized Quotations with KRA eTIMS (Commercial Core)
+CREATE TABLE IF NOT EXISTS invoices (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    customer_id INT NOT NULL,
+    deal_id INT,
+    invoice_number VARCHAR(100) NOT NULL,
+    etims_cu_number VARCHAR(100),
+    invoice_type ENUM('quote', 'proforma', 'invoice') DEFAULT 'invoice',
+    issue_date DATE NOT NULL,
+    due_date DATE NOT NULL,
+    subtotal_kes DECIMAL(14, 2) NOT NULL,
+    vat_amount_kes DECIMAL(14, 2) NOT NULL,
+    total_amount_kes DECIMAL(14, 2) NOT NULL,
+    amount_paid_kes DECIMAL(14, 2) DEFAULT 0.00,
+    status ENUM('draft', 'sent', 'partial', 'paid', 'overdue', 'cancelled') DEFAULT 'sent',
+    notes TEXT,
+    qr_code_data TEXT,
+    created_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+    FOREIGN KEY (deal_id) REFERENCES deals(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_tenant_inv (tenant_id, invoice_number),
+    INDEX idx_inv_tenant_status (tenant_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Invoice Line Items
+CREATE TABLE IF NOT EXISTS invoice_items (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    invoice_id INT NOT NULL,
+    product_id INT,
+    item_description VARCHAR(255) NOT NULL,
+    quantity DECIMAL(10, 2) DEFAULT 1.00,
+    unit_price_kes DECIMAL(14, 2) NOT NULL,
+    tax_rate DECIMAL(5, 2) DEFAULT 16.00,
+    total_kes DECIMAL(14, 2) NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+    INDEX idx_item_invoice (invoice_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
