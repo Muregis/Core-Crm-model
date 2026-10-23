@@ -53,6 +53,8 @@ jobs:
           node --check src/routes/jobs.js
           node --check src/routes/reports.js
           node --check src/routes/analytics.js
+          node --check src/routes/parcels.js
+          node --check src/controllers/parcelController.js
 
       - name: Run test suite
         run: npm test -- --passWithNoTests

@@ -42,7 +42,11 @@ jest.mock('bullmq', () => {
 const db = require('../src/config/database-sqlite');
 
 beforeAll(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (typeof db.ready?.then === 'function') {
+    await db.ready;
+  } else {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+  }
 });
 
 afterAll(async () => {
