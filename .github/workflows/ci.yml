@@ -26,6 +26,7 @@ jobs:
           --health-retries 5
 
     strategy:
+      fail-fast: false
       matrix:
         node-version: [18.x, 20.x]
 
@@ -51,6 +52,7 @@ jobs:
           node --check src/queue/events.js
           node --check src/routes/jobs.js
           node --check src/routes/reports.js
+          node --check src/routes/analytics.js
 
       - name: Run test suite
         run: npm test -- --passWithNoTests

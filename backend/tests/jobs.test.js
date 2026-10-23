@@ -1,4 +1,47 @@
 const request = require('supertest');
+
+// Mock BullMQ so CI does not depend on a live Redis connection for enqueue tests.
+jest.mock('../src/queue/queues', () => {
+  const jobs = new Map();
+  return {
+    reportQueue: {
+      name: 'report',
+      add: jest.fn(async (name, data, opts) => {
+        const id = (opts && opts.jobId) || `job-${jobs.size + 1}`;
+        const job = {
+          id,
+          name,
+          data,
+          opts: opts || {},
+          attemptsMade: 0,
+          getState: async () => 'waiting',
+          retry: async () => {}
+        };
+        jobs.set(String(id), job);
+        return job;
+      }),
+      getJob: jest.fn(async (id) => jobs.get(String(id)) || null),
+      getJobCounts: jest.fn(async () => ({ waiting: 0, active: 0, completed: 0, failed: 0 })),
+      getWorkers: jest.fn(async () => [])
+    },
+    emailQueue: {
+      name: 'email',
+      add: jest.fn(),
+      getJob: jest.fn(),
+      getJobCounts: jest.fn(async () => ({})),
+      getWorkers: jest.fn(async () => []),
+      client: Promise.resolve({ ping: async () => 'PONG' })
+    },
+    importQueue: {
+      name: 'import',
+      add: jest.fn(),
+      getJob: jest.fn(),
+      getJobCounts: jest.fn(async () => ({})),
+      getWorkers: jest.fn(async () => [])
+    }
+  };
+});
+
 const app = require('../server');
 const { processReport } = require('../workers/report.worker');
 
@@ -7,26 +50,27 @@ describe('BullMQ Queue Workflow & Jobs Endpoints', () => {
   let tenant2Token;
 
   beforeEach(async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const res1 = await request(app).post('/api/auth/register').send({
-      email: 'queueadmin1@tenant1.com',
+      email: `queueadmin1-${suffix}@tenant1.com`,
       password: 'password123',
       firstName: 'Queue',
       lastName: 'One',
-      phone: '+254711888881',
+      phone: `+254711${String(Date.now()).slice(-6)}`,
       role: 'admin',
-      tenantName: 'Tenant One'
+      tenantName: `Tenant One ${suffix}`
     });
     expect(res1.statusCode).toBeLessThan(300);
     tenant1Token = res1.body.data.token;
 
     const res2 = await request(app).post('/api/auth/register').send({
-      email: 'queueadmin2@tenant2.com',
+      email: `queueadmin2-${suffix}@tenant2.com`,
       password: 'password123',
       firstName: 'Queue',
       lastName: 'Two',
-      phone: '+254722888882',
+      phone: `+254722${String(Date.now()).slice(-6)}`,
       role: 'admin',
-      tenantName: 'Tenant Two'
+      tenantName: `Tenant Two ${suffix}`
     });
     expect(res2.statusCode).toBeLessThan(300);
     tenant2Token = res2.body.data.token;
@@ -35,44 +79,46 @@ describe('BullMQ Queue Workflow & Jobs Endpoints', () => {
   describe('Asynchronous Job Dispatch & Idempotency', () => {
     it('should enqueue a sales report job and return 202 Accepted', async () => {
       const res = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
         .send({
+          reportType: 'sales',
           filters: { year: 2026 },
           idempotencyKey: 'idemp-key-1001'
         });
 
       expect(res.statusCode).toEqual(202);
       expect(res.body.success).toBe(true);
-      expect(res.body.jobId).toMatch(/tenant-\d+-idemp-key-1001/);
+      expect(res.body.data.jobId).toMatch(/tenant-\d+-idemp-key-1001/);
     });
 
     it('should be idempotent when enqueuing with identical idempotencyKey', async () => {
+      const key = `idemp-dup-${Date.now()}`;
       const res1 = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
-        .send({ idempotencyKey: 'idemp-duplicate-test' });
+        .send({ reportType: 'sales', idempotencyKey: key });
 
       const res2 = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
-        .send({ idempotencyKey: 'idemp-duplicate-test' });
+        .send({ reportType: 'sales', idempotencyKey: key });
 
       expect(res1.statusCode).toEqual(202);
       expect(res2.statusCode).toEqual(202);
-      expect(res1.body.jobId).toEqual(res2.body.jobId);
+      expect(res1.body.data.jobId).toEqual(res2.body.data.jobId);
     });
   });
 
   describe('Worker Processing & Result Persistence', () => {
     it('worker should process sales report job, persist results, and retrieve status via API', async () => {
       const enqueueRes = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
-        .send({ idempotencyKey: 'job-process-e2e' });
+        .send({ reportType: 'sales', idempotencyKey: `job-process-e2e-${Date.now()}` });
 
       expect(enqueueRes.statusCode).toEqual(202);
-      const jobId = enqueueRes.body.jobId;
+      const jobId = enqueueRes.body.data.jobId;
 
       const tenantMatch = String(jobId).match(/^tenant-(\d+)-/);
       const tenantId = tenantMatch ? Number(tenantMatch[1]) : 1;
@@ -123,12 +169,12 @@ describe('BullMQ Queue Workflow & Jobs Endpoints', () => {
   describe('Job Tenant Isolation', () => {
     it('Tenant 2 should NOT retrieve Tenant 1 job details (404 Not Found)', async () => {
       const enqueueRes = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
-        .send({ idempotencyKey: 'job-tenant-isolation-test' });
+        .send({ reportType: 'sales', idempotencyKey: `job-tenant-isolation-${Date.now()}` });
 
       expect(enqueueRes.statusCode).toEqual(202);
-      const jobId = enqueueRes.body.jobId;
+      const jobId = enqueueRes.body.data.jobId;
 
       const res = await request(app)
         .get(`/api/jobs/${jobId}`)

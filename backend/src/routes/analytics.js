@@ -1,47 +1,50 @@
 const express = require('express');
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 const { enqueueReportJob } = require('../jobs/producers/reportProducer');
-const db = require('../config/database');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// All routes are protected
 router.use(protect);
 
 router.get('/', (req, res) => {
   res.json({ success: true, message: 'Analytics endpoint' });
 });
 
-// POST /api/analytics/sales-report - Trigger background report generation
-router.post('/sales-report', async (req, res) => {
+/**
+ * POST /api/analytics/sales-report
+ * Compatibility alias for POST /api/reports (tenant-scoped sales report).
+ */
+router.post('/sales-report', authorize('admin', 'manager'), async (req, res) => {
   try {
-    const { filters, idempotencyKey } = req.body;
-    
-    const job = await enqueueReportJob({
-      reportType: 'sales',
-      filters: filters || {},
-      tenantId: req.user.tenant_id,
-      userId: req.user.id,
-      idempotencyKey
-    });
-
-    // Ensure job record is recorded in jobs audit table for status retrieval
-    const existing = await db.query('SELECT id, status FROM jobs WHERE job_id = ?', [job.id]);
-    if (!existing || existing.length === 0) {
-      await db.query(
-        'INSERT INTO jobs (job_id, tenant_id, type, status, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
-        [job.id, req.user.tenant_id, 'report', 'waiting', JSON.stringify({ reportType: 'sales', filters })]
-      );
+    const tenantId = Number(req.user.tenant_id);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is not associated with an active tenant'
+      });
     }
 
-    // HTTP 202 Accepted
-    res.status(202).json({
+    const job = await enqueueReportJob({
+      reportType: 'sales',
+      filters: req.body.filters || {},
+      tenantId,
+      userId: Number(req.user.id),
+      idempotencyKey: req.get('Idempotency-Key') || req.body.idempotencyKey
+    });
+
+    return res.status(202).json({
       success: true,
       message: 'Report generation started',
-      jobId: job.id
+      jobId: job.id,
+      data: { jobId: job.id, queue: 'report', status: 'waiting', reportType: 'sales' }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to enqueue report job' });
+    logger.error('Failed to enqueue analytics sales report', { message: error.message });
+    return res.status(503).json({
+      success: false,
+      message: 'Failed to enqueue report job'
+    });
   }
 });
 
