@@ -48,6 +48,10 @@ describe('Parcels API & Tenant Isolation (Land pack)', () => {
         listPriceKes: 4500000
       });
 
+    if (res.statusCode !== 201) {
+      // eslint-disable-next-line no-console
+      console.error('create parcel failed', res.statusCode, res.body);
+    }
     expect(res.statusCode).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.parcel.title_ref).toBe('LR-1234/1');
