@@ -12,6 +12,11 @@ const dbPath = process.env.NODE_ENV === 'test' ? ':memory:' : path.join(dbDir, '
 
 class Database {
   constructor() {
+    this._readyResolve = null;
+    this.ready = new Promise((resolve) => {
+      this._readyResolve = resolve;
+    });
+
     this.db = new sqlite3.Database(dbPath, (err) => {
       if (err) {
         logger.error('SQLite connection error:', err);
@@ -23,31 +28,38 @@ class Database {
   }
 
   initTables() {
-    this.db.run('PRAGMA foreign_keys = ON');
+    this.db.serialize(() => {
+      this.db.run('PRAGMA foreign_keys = ON');
 
-    this.createTenantsTable();
-    this.createUsersTable();
-    this.createCountiesTable();
-    this.createSubCountiesTable();
-    this.createBusinessCategoriesTable();
-    this.createCustomersTable();
-    this.createCustomerTagsTable();
-    this.createCustomerTagRelationsTable();
-    this.createLeadsTable();
-    this.createDealStagesTable();
-    this.createDealsTable();
-    this.createMpesaTransactionsTable();
-    this.createCommunicationsTable();
-    this.createTasksTable();
-    this.createAttachmentsTable();
-    this.createActivityLogTable();
-    this.createSystemSettingsTable();
-    this.createJobsTable();
-    this.createTenantCredentialsTable();
-    this.createRefreshTokensTable();
-    this.createTokenBlocklistTable();
-    this.createParcelsTable();
-    this.createParcelStatusHistoryTable();
+      this.createTenantsTable();
+      this.createUsersTable();
+      this.createCountiesTable();
+      this.createSubCountiesTable();
+      this.createBusinessCategoriesTable();
+      this.createCustomersTable();
+      this.createCustomerTagsTable();
+      this.createCustomerTagRelationsTable();
+      this.createLeadsTable();
+      this.createDealStagesTable();
+      this.createDealsTable();
+      this.createMpesaTransactionsTable();
+      this.createCommunicationsTable();
+      this.createTasksTable();
+      this.createAttachmentsTable();
+      this.createActivityLogTable();
+      this.createSystemSettingsTable();
+      this.createJobsTable();
+      this.createTenantCredentialsTable();
+      this.createRefreshTokensTable();
+      this.createTokenBlocklistTable();
+      this.createParcelsTable();
+      this.createParcelStatusHistoryTable();
+
+      this.db.run('SELECT 1', (err) => {
+        if (err) logger.error('Schema ready check failed:', err);
+        if (this._readyResolve) this._readyResolve();
+      });
+    });
   }
 
   createTenantsTable() {
@@ -550,16 +562,8 @@ class Database {
       async query(sql, params = []) {
         const upper = sql.toUpperCase();
         const tenantTables = [
-          'CUSTOMERS',
-          'LEADS',
-          'DEALS',
-          'TASKS',
-          'COMMUNICATIONS',
-          'MPESA_TRANSACTIONS',
-          'JOBS',
-          'TENANT_CREDENTIALS',
-          'PARCELS',
-          'PARCEL_STATUS_HISTORY'
+          'CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS',
+          'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS', 'PARCELS', 'PARCEL_STATUS_HISTORY'
         ];
         const touchesTenantTable = tenantTables.some((t) => upper.includes(t));
         if (touchesTenantTable && !upper.includes('TENANT_ID')) {
@@ -617,7 +621,6 @@ class Database {
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
         this.db.run('BEGIN TRANSACTION');
-
         const transactionDb = {
           run: (sql, params) =>
             new Promise((res, rej) => {
@@ -634,7 +637,6 @@ class Database {
               });
             })
         };
-
         try {
           const result = callback(transactionDb);
           this.db.run('COMMIT');
