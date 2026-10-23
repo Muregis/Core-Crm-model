@@ -53,9 +53,12 @@ jobs:
           node --check src/routes/jobs.js
           node --check src/routes/reports.js
           node --check src/routes/analytics.js
+          node --check src/routes/parcels.js
+          node --check src/controllers/parcelController.js
+          node --check src/middleware/auth.js
 
       - name: Run test suite
-        run: npm test -- --passWithNoTests
+        run: npm test -- --passWithNoTests --maxWorkers=2
         env:
           NODE_ENV: test
           JWT_SECRET: test_jwt_secret_key_1234567890

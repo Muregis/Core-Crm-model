@@ -5,19 +5,15 @@ const db = require('../config/database');
 const { validationResult } = require('express-validator');
 const logger = require('../utils/logger');
 
-// Generate JWT Access Token
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '8h'
   });
 };
 
-// Generate Refresh Token and store hash in database
 const createRefreshToken = async (userId) => {
   const rawToken = crypto.randomBytes(40).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-  
-  // Expiry: 7 days from now
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   await db.query(
@@ -28,9 +24,6 @@ const createRefreshToken = async (userId) => {
   return rawToken;
 };
 
-// @desc    Register user into existing or default tenant
-// @route   POST /api/auth/register
-// @access  Public
 const register = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -48,7 +41,6 @@ const register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Transaction for tenant and user creation
     await db.transaction(async (trx) => {
       let tName = tenantName || (firstName + "'s Organization");
       const tResult = await trx.run('INSERT INTO tenants (name) VALUES (?)', [tName]);
@@ -67,9 +59,9 @@ const register = async (req, res) => {
       const user = users[0];
       const token = generateToken(user.id);
       const refreshToken = await createRefreshToken(user.id);
-      
+
       await trx.run('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
-      
+
       logger.info('New user registered: ' + email);
       res.status(201).json({
         success: true,
@@ -77,16 +69,12 @@ const register = async (req, res) => {
         data: { user, token, refreshToken }
       });
     });
-
   } catch (error) {
     logger.error('Registration error:', error);
     res.status(500).json({ success: false, message: 'Server error during registration' });
   }
 };
 
-// @desc    Self-Service Multi-Tenant SaaS Registration & Organization Provisioning
-// @route   POST /api/auth/register-tenant
-// @access  Public
 const registerTenant = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -108,7 +96,6 @@ const registerTenant = async (req, res) => {
 
     const normalizedSlug = slug.toLowerCase().trim();
 
-    // Check slug collision
     const existingTenants = await db.query('SELECT id FROM tenants WHERE slug = ?', [normalizedSlug]);
     if (existingTenants.length > 0) {
       return res.status(409).json({
@@ -117,7 +104,6 @@ const registerTenant = async (req, res) => {
       });
     }
 
-    // Check email collision
     const existingUsers = await db.query('SELECT id FROM users WHERE email = ?', [email]);
     if (existingUsers.length > 0) {
       return res.status(409).json({
@@ -130,14 +116,12 @@ const registerTenant = async (req, res) => {
     const passwordHash = await bcrypt.hash(password, salt);
 
     await db.transaction(async (trx) => {
-      // 1. Provision Tenant
       const tResult = await trx.run(
         'INSERT INTO tenants (name, slug, kra_pin, plan, status) VALUES (?, ?, ?, ?, ?)',
         [companyName, normalizedSlug, kraPin || null, plan, 'active']
       );
       const tenantId = tResult.insertId || tResult.id;
 
-      // 2. Seed Default Deal Stages for this Tenant
       const defaultStages = [
         [tenantId, 'Prospecting', 1, 10, '#6c757d'],
         [tenantId, 'Qualification', 2, 25, '#17a2b8'],
@@ -153,20 +137,17 @@ const registerTenant = async (req, res) => {
         );
       }
 
-      // 3. Seed Default Tenant System Settings
       await trx.run(
         'INSERT INTO system_settings (tenant_id, setting_key, setting_value, description) VALUES (?, ?, ?, ?)',
         [tenantId, 'currency_' + tenantId, 'KES', 'Default billing currency']
       );
 
-      // 4. Create Initial Tenant Administrator User
       const uResult = await trx.run(
         'INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, phone, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [tenantId, email, passwordHash, firstName, lastName, phone || null, 'admin']
       );
       const userId = uResult.insertId || uResult.id;
 
-      // 5. Generate Auth Credentials
       const token = generateToken(userId);
       const refreshToken = await createRefreshToken(userId);
 
@@ -195,16 +176,12 @@ const registerTenant = async (req, res) => {
         }
       });
     });
-
   } catch (error) {
     logger.error('Tenant registration error:', error);
     res.status(500).json({ success: false, message: 'Server error during tenant provisioning' });
   }
 };
 
-// @desc    Public Tenant Metadata Lookup (for custom tenant login portals)
-// @route   GET /api/auth/tenant/:slug
-// @access  Public
 const getPublicTenantInfo = async (req, res) => {
   try {
     const { slug } = req.params;
@@ -227,9 +204,6 @@ const getPublicTenantInfo = async (req, res) => {
   }
 };
 
-// @desc    Login user
-// @route   POST /api/auth/login
-// @access  Public
 const login = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -243,7 +217,6 @@ const login = async (req, res) => {
 
     const { email, password } = req.body;
 
-    // Check if user exists
     const users = await db.query(
       'SELECT id, tenant_id, email, password_hash, first_name, last_name, phone, role, is_active FROM users WHERE email = ?',
       [email]
@@ -265,7 +238,6 @@ const login = async (req, res) => {
       });
     }
 
-    // Check password
     const isMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!isMatch) {
@@ -275,15 +247,10 @@ const login = async (req, res) => {
       });
     }
 
-    // Generate tokens
     const token = generateToken(user.id);
     const refreshToken = await createRefreshToken(user.id);
 
-    // Update last login
-    await db.query(
-      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?',
-      [user.id]
-    );
+    await db.query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
 
     logger.info(`User logged in: ${email}`);
 
@@ -313,9 +280,6 @@ const login = async (req, res) => {
   }
 };
 
-// @desc    Refresh Access Token
-// @route   POST /api/auth/refresh
-// @access  Public
 const refreshTokenHandler = async (req, res) => {
   try {
     const { refreshToken } = req.body;
@@ -339,10 +303,8 @@ const refreshTokenHandler = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Refresh token has expired' });
     }
 
-    // Token rotation: Revoke used token
     await db.query('UPDATE refresh_tokens SET revoked = 1 WHERE id = ?', [record.id]);
 
-    // Issue new pair
     const users = await db.query(
       'SELECT id, tenant_id, email, first_name, last_name, role, is_active FROM users WHERE id = ?',
       [record.user_id]
@@ -368,12 +330,8 @@ const refreshTokenHandler = async (req, res) => {
   }
 };
 
-// @desc    Logout and invalidate tokens
-// @route   POST /api/auth/logout
-// @access  Private
 const logout = async (req, res) => {
   try {
-    // Add current Bearer token to blocklist
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       const token = req.headers.authorization.split(' ')[1];
       const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -385,7 +343,6 @@ const logout = async (req, res) => {
       );
     }
 
-    // Revoke all refresh tokens for this user
     if (req.user && req.user.id) {
       await db.query('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?', [req.user.id]);
     }
@@ -400,9 +357,6 @@ const logout = async (req, res) => {
   }
 };
 
-// @desc    Get current logged in user
-// @route   GET /api/auth/me
-// @access  Private
 const getMe = async (req, res) => {
   try {
     const users = await db.query(
@@ -441,9 +395,6 @@ const getMe = async (req, res) => {
   }
 };
 
-// @desc    Update user profile
-// @route   PUT /api/auth/profile
-// @access  Private
 const updateProfile = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -496,9 +447,6 @@ const updateProfile = async (req, res) => {
   }
 };
 
-// @desc    Change password
-// @route   PUT /api/auth/password
-// @access  Private
 const changePassword = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -512,10 +460,7 @@ const changePassword = async (req, res) => {
 
     const { currentPassword, newPassword } = req.body;
 
-    const users = await db.query(
-      'SELECT password_hash FROM users WHERE id = ?',
-      [req.user.id]
-    );
+    const users = await db.query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
 
     const isMatch = await bcrypt.compare(currentPassword, users[0].password_hash);
     if (!isMatch) {
@@ -525,12 +470,8 @@ const changePassword = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const newPasswordHash = await bcrypt.hash(newPassword, salt);
 
-    await db.query(
-      'UPDATE users SET password_hash = ? WHERE id = ?',
-      [newPasswordHash, req.user.id]
-    );
+    await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [newPasswordHash, req.user.id]);
 
-    // Revoke existing refresh tokens when password changes
     await db.query('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?', [req.user.id]);
 
     logger.info(`Password changed for user: ${req.user.email}`);

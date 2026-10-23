@@ -20,6 +20,7 @@ const countyRoutes = require('./src/routes/counties');
 const uploadRoutes = require('./src/routes/uploads');
 const jobsRoutes = require('./src/routes/jobs');
 const reportsRoutes = require('./src/routes/reports');
+const parcelRoutes = require('./src/routes/parcels');
 
 const db = require('./src/config/database');
 const { resolveTenant } = require('./src/middleware/tenant');
@@ -112,6 +113,7 @@ app.use('/api/counties', countyRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/parcels', parcelRoutes);
 
 app.use('*', (req, res) => {
   res.status(404).json({
