@@ -10,7 +10,15 @@ jest.mock('bullmq', () => {
       name,
       add: jest.fn().mockImplementation((jobName, data, opts) => {
         const id = (opts && opts.jobId) || `mock-job-${store.size + 1}`;
-        const job = { id, name: jobName, data, opts: opts || {}, attemptsMade: 0 };
+        const job = {
+          id,
+          name: jobName,
+          data,
+          opts: opts || {},
+          attemptsMade: 0,
+          getState: jest.fn().mockResolvedValue('waiting'),
+          retry: jest.fn().mockResolvedValue()
+        };
         store.set(String(id), job);
         return Promise.resolve(job);
       }),

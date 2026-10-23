@@ -58,7 +58,6 @@ router.get('/stats', async (req, res) => {
 });
 
 // Platform-wide worker inventory is intentionally NOT exposed on the tenant API.
-// Reintroduce under a platform-operator role only when that role exists.
 
 router.get('/:id/result', async (req, res) => {
   try {
@@ -88,11 +87,20 @@ router.get('/:id', async (req, res) => {
     let queueState = null;
     let attemptsMade = Number(row.attempts) || 0;
 
-    if (queue) {
-      const bullJob = await queue.getJob(String(row.job_id));
-      if (bullJob) {
-        queueState = await bullJob.getState();
-        attemptsMade = bullJob.attemptsMade;
+    // Queue lookup is optional enrichment. Audit-table status is authoritative.
+    if (queue && typeof queue.getJob === 'function') {
+      try {
+        const bullJob = await queue.getJob(String(row.job_id));
+        if (bullJob) {
+          if (typeof bullJob.getState === 'function') {
+            queueState = await bullJob.getState();
+          }
+          if (bullJob.attemptsMade != null) {
+            attemptsMade = bullJob.attemptsMade;
+          }
+        }
+      } catch (_) {
+        // Redis/mock unavailable — still return the tenant-owned audit row
       }
     }
 
@@ -137,7 +145,7 @@ router.post('/:type/:id/retry', async (req, res) => {
     }
 
     const job = await queue.getJob(String(row.job_id));
-    if (!job) {
+    if (!job || typeof job.retry !== 'function') {
       return res.status(404).json({ success: false, message: 'Job is no longer available to retry' });
     }
 
