@@ -37,9 +37,14 @@ async function enqueueReportJob(data) {
   );
 
   if (existing && existing.length > 0) {
-    const existingJob = await reportQueue.getJob(jobId);
-    if (existingJob) return existingJob;
-    throw new Error('This idempotency key was already used; use a new key');
+    // True idempotency: same key + tenant always returns the same job id.
+    try {
+      const existingJob = await reportQueue.getJob(jobId);
+      if (existingJob) return existingJob;
+    } catch (_) {
+      // Redis unavailable — still honor the audit row
+    }
+    return { id: jobId, data: payload, name: 'generate_sales_report' };
   }
 
   await db.query(

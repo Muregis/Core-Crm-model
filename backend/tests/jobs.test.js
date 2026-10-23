@@ -1,47 +1,4 @@
 const request = require('supertest');
-
-// Mock BullMQ so CI does not depend on a live Redis connection for enqueue tests.
-jest.mock('../src/queue/queues', () => {
-  const jobs = new Map();
-  return {
-    reportQueue: {
-      name: 'report',
-      add: jest.fn(async (name, data, opts) => {
-        const id = (opts && opts.jobId) || `job-${jobs.size + 1}`;
-        const job = {
-          id,
-          name,
-          data,
-          opts: opts || {},
-          attemptsMade: 0,
-          getState: async () => 'waiting',
-          retry: async () => {}
-        };
-        jobs.set(String(id), job);
-        return job;
-      }),
-      getJob: jest.fn(async (id) => jobs.get(String(id)) || null),
-      getJobCounts: jest.fn(async () => ({ waiting: 0, active: 0, completed: 0, failed: 0 })),
-      getWorkers: jest.fn(async () => [])
-    },
-    emailQueue: {
-      name: 'email',
-      add: jest.fn(),
-      getJob: jest.fn(),
-      getJobCounts: jest.fn(async () => ({})),
-      getWorkers: jest.fn(async () => []),
-      client: Promise.resolve({ ping: async () => 'PONG' })
-    },
-    importQueue: {
-      name: 'import',
-      add: jest.fn(),
-      getJob: jest.fn(),
-      getJobCounts: jest.fn(async () => ({})),
-      getWorkers: jest.fn(async () => [])
-    }
-  };
-});
-
 const app = require('../server');
 const { processReport } = require('../workers/report.worker');
 
@@ -123,18 +80,13 @@ describe('BullMQ Queue Workflow & Jobs Endpoints', () => {
       const tenantMatch = String(jobId).match(/^tenant-(\d+)-/);
       const tenantId = tenantMatch ? Number(tenantMatch[1]) : 1;
 
-      const fakeJob = {
+      const result = await processReport({
         id: jobId,
         attemptsMade: 0,
         opts: { attempts: 3 },
-        data: {
-          reportType: 'sales',
-          filters: {},
-          tenantId
-        }
-      };
+        data: { reportType: 'sales', filters: {}, tenantId }
+      });
 
-      const result = await processReport(fakeJob);
       expect(result).toBeDefined();
       expect(result.totalDeals).toBeDefined();
       expect(result.revenueKes).toBeDefined();
@@ -152,17 +104,14 @@ describe('BullMQ Queue Workflow & Jobs Endpoints', () => {
     });
 
     it('worker should throw error on unknown report type', async () => {
-      const badJob = {
-        id: 'bad-job-id',
-        attemptsMade: 0,
-        opts: { attempts: 3 },
-        data: {
-          reportType: 'unsupported_type',
-          tenantId: 1
-        }
-      };
-
-      await expect(processReport(badJob)).rejects.toThrow(/Unsupported report type/i);
+      await expect(
+        processReport({
+          id: 'bad-job-id',
+          attemptsMade: 0,
+          opts: { attempts: 3 },
+          data: { reportType: 'unsupported_type', tenantId: 1 }
+        })
+      ).rejects.toThrow(/Unsupported report type/i);
     });
   });
 
