@@ -410,12 +410,18 @@ const createExpenditure = async (req, res) => {
       ]
     );
 
-    const created = await db.query('SELECT * FROM expenditures WHERE id = ?', [result.insertId]);
+    const insertId = result.id || result.insertId;
+    const created = await db.query('SELECT * FROM expenditures WHERE id = ?', [insertId]);
+    const expenseRecord = created[0] || { id: insertId, title, amount_kes: parseFloat(amountKes), category };
 
     res.status(201).json({
       success: true,
       message: 'Expenditure recorded successfully',
-      data: { expense: created[0] }
+      data: {
+        id: insertId,
+        expense: expenseRecord,
+        ...expenseRecord
+      }
     });
   } catch (error) {
     logger.error('Create expenditure error:', error);

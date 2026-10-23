@@ -7,5 +7,6 @@ module.exports = {
   verbose: true,
   forceExit: true,
   detectOpenHandles: false,
-  testTimeout: 20000
+  testTimeout: 20000,
+  maxWorkers: 1
 };

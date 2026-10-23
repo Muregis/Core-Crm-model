@@ -102,7 +102,7 @@ sequenceDiagram
 
 ---
 
-## 🧪 Comprehensive Test Suite (47 Tests Total)
+## 🧪 Comprehensive Test Suite (15 Suites, 86 / 86 Passing)
 
 The test suite covers unit, integration, RBAC, tenant isolation, M-Pesa encryption, and background queue verification using **Jest** and **Supertest**.
 
@@ -111,10 +111,28 @@ cd backend
 npm test
 ```
 
-### Test Suite Execution Summary (6 Suites, 47 / 47 Passing)
+### Test Suite Execution Summary (15 Suites, 86 / 86 Passing - 100%)
 
-| Test Suite | Spec File | Tests Passed | Key Capabilities Verified |
+| Test Suite | Spec File | Tests Passed | Key Invariants Verified |
 | :--- | :--- | :---: | :--- |
+| **Authentication & Profile** | `tests/auth.test.js` | 7 / 7 | Password hashing (bcrypt), login token generation, malformed token rejection, profile update. |
+| **Customer Management** | `tests/customers.test.js` | 9 / 9 | Customer CRUD, Kenyan mobile validation, **strict cross-tenant boundary isolation (404 on cross-read/write)**, RBAC delete guard. |
+| **Lead Lifecycle & Conversion** | `tests/leads.test.js` | 8 / 8 | Lead creation, phone validation (`+254`), search/filter, **cross-tenant isolation**, conversion into customer. |
+| **Deals & Pipeline** | `tests/deals.test.js` | 10 / 10 | Deal stages, cross-tenant customer reference rejection, tenant isolation on updates/reads, RBAC delete guard. |
+| **BullMQ Jobs & Workers** | `tests/jobs.test.js` | 5 / 5 | HTTP 202 async dispatch, idempotency key deduplication, worker execution, result persistence in `jobs` table, cross-tenant job access rejection. |
+| **Report Producer** | `tests/reportProducer.test.js` | 4 / 4 | Tenant and user validation, retry bounds, tenant-prefixed idempotency keys. |
+| **Report Endpoints** | `tests/reports.test.js` | 2 / 2 | Unauthenticated and malformed token rejection on async reporting routes. |
+| **SaaS Multi-Tenant Lifecycle** | `tests/saas_multitenant.test.js` | 10 / 10 | Self-service tenant registration, deal stage auto-seeding, slug collision, public tenant lookup, refresh token rotation, token revocation blocklist on logout, M-Pesa AES-256 credential encryption, public Daraja webhook routing by shortcode, KDPA data export and PII anonymization. |
+| **Land Parcels & Conveyancing** | `tests/parcels.test.js` | 5 / 5 | Land parcel creation, status filtering, **cross-tenant isolation**, status history, unique title_ref scoped to tenant. |
+| **Legal Matters & Billable Hours** | `tests/matters.test.js` | 3 / 3 | Legal matter creation, court station assignments, **cross-tenant isolation**, billable time logging. |
+| **Advanced Industry Capabilities** | `tests/advanced_features.test.js` | 3 / 3 | Plot Matrix state machine & timed reservation holds, KRA eTIMS invoice generation with 16% VAT, ArdhiSasa conveyancing milestones. |
+| **Tasks, Communications & Admin** | `tests/tasks_communications_users.test.js` | 3 / 3 | Task CRUD, WhatsApp/interaction logs, user invitations and RBAC enforcement. |
+| **Authorization Middleware** | `tests/authorize.test.js` | 4 / 4 | Missing token rejection, unauthorized role rejection (403), allowed role pass-through. |
+| **Migration Statement Splitter** | `tests/migrate.split.test.js` | 2 / 2 | SQL statement parsing preserving semicolons in string literals, comment stripping. |
+| **System Health API** | `tests/health.test.js` | 1 / 1 | System heartbeat and operational telemetry. |
+| **Total Test Runs** | **15 Suites** | **86 / 86** | **100% Passing** |
+
+--- | :--- | :---: | :--- |
 | **Authentication & Profile** | `tests/auth.test.js` | 7 / 7 | User registration, password hashing (bcrypt), login token generation, token verification, malformed token rejection, profile update. |
 | **Customer Management** | `tests/customers.test.js` | 9 / 9 | Customer creation, list filtering, detail retrieval, validation of Kenyan mobile formats, **tenant boundary isolation**, and RBAC delete guard. |
 | **Lead Lifecycle & Conversion** | `tests/leads.test.js` | 8 / 8 | Lead creation, phone validation (`+254`), search/filter, **tenant boundary isolation**, conversion of qualified lead into customer record. |
