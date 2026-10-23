@@ -1,32 +1,79 @@
 const { reportQueue } = require('../../queue/queues');
+const db = require('../../config/database');
 const logger = require('../../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
 async function enqueueReportJob(data) {
+  const tenantId = Number(data.tenantId);
+  const userId = Number(data.userId);
+
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    throw new Error('A valid tenantId is required to enqueue a report');
+  }
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new Error('A valid userId is required to enqueue a report');
+  }
+  if (data.reportType !== 'sales') {
+    throw new Error('Unsupported report type');
+  }
+
+  // BullMQ job IDs are queue-global. Prefix client idempotency keys with the
+  // authenticated tenant so two companies cannot collide on the same key.
+  const idempotencyKey = typeof data.idempotencyKey === 'string'
+    ? data.idempotencyKey.trim().slice(0, 120)
+    : '';
+  const jobId = idempotencyKey
+    ? `tenant-${tenantId}-${idempotencyKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+    : uuidv4();
+
+  const payload = {
+    reportType: data.reportType,
+    filters: data.filters || {},
+    tenantId,
+    userId
+  };
+
+  // Create the tenant-owned audit row before the worker can pick up the job.
+  // The `jobs` table uses `result` in the current SQLite schema.
+  const existing = await db.query(
+    'SELECT job_id, tenant_id, status FROM jobs WHERE job_id = ? AND tenant_id = ?',
+    [jobId, tenantId]
+  );
+
+  if (existing && existing.length > 0) {
+    const existingJob = await reportQueue.getJob(jobId);
+    if (existingJob) return existingJob;
+    throw new Error('This idempotency key was already used; use a new key');
+  }
+
+  await db.query(
+    'INSERT INTO jobs (job_id, tenant_id, type, status, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+    [jobId, tenantId, 'report', 'waiting', JSON.stringify(payload)]
+  );
+
   try {
-    const jobOptions = {
+    const job = await reportQueue.add('generate_sales_report', payload, {
+      jobId,
       attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 5000,
-      },
+      backoff: { type: 'exponential', delay: 5000 },
       removeOnComplete: false,
       removeOnFail: false,
-      jobId: data.idempotencyKey || uuidv4(),
-      // Multi-tenant grouping & priority to prevent single tenant starvation (noisy neighbor)
-      groupId: data.tenantId ? `tenant:${data.tenantId}` : 'default',
-      priority: data.priority || (data.plan === 'enterprise' ? 1 : 5)
-    };
-
-    const job = await reportQueue.add('generate_sales_report', data, jobOptions);
-    logger.info(`Enqueued report job ${job.id} of type ${data.reportType} for tenant ${data.tenantId || 'global'}`);
+      priority: data.priority || 5
+    });
+    logger.info('Enqueued tenant-scoped sales report', {
+      jobId: job.id,
+      tenantId,
+      userId
+    });
     return job;
   } catch (error) {
-    logger.error('Error enqueueing report job:', error);
+    await db.query(
+      'UPDATE jobs SET status = ?, error_message = ?, failed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?',
+      ['failed', 'Queue unavailable; report was not enqueued', jobId, tenantId]
+    );
+    logger.error('Error enqueueing report job', { jobId, tenantId, message: error.message });
     throw error;
   }
 }
 
-module.exports = {
-  enqueueReportJob
-};
+module.exports = { enqueueReportJob };
