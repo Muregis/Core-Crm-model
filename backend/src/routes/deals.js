@@ -6,12 +6,17 @@ const {
   getDeal,
   createDeal,
   updateDeal,
-  deleteDeal
+  deleteDeal,
+  getDealStages,
+  updateDealStage
 } = require('../controllers/dealController');
 
 const router = express.Router();
 
 router.use(protect);
+
+// Deal stages must be defined before /:id parameter matching
+router.get('/stages', getDealStages);
 
 const dealValidation = [
   body('title').trim().isLength({ min: 2 }).withMessage('Deal title must be at least 2 characters'),
@@ -22,6 +27,8 @@ const dealValidation = [
 router.route('/')
   .get(getDeals)
   .post(dealValidation, createDeal);
+
+router.put('/:id/stage', updateDealStage);
 
 router.route('/:id')
   .get(getDeal)

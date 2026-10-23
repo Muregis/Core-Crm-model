@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { communicationService } from '../services/communicationService'
 import { customerService } from '../services/customerService'
+import { useAuthStore } from '../store/authStore'
 import EmptyState from '../components/EmptyState'
 import toast from 'react-hot-toast'
 
@@ -42,6 +43,9 @@ const CHANNEL_COLORS = {
 }
 
 const Communications = () => {
+  const { user } = useAuthStore()
+  const industry = user?.tenant_industry || 'general'
+
   const [communications, setCommunications] = useState([])
   const [customers, setCustomers] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -79,32 +83,87 @@ const Communications = () => {
         setCustomers(custRes.data.data.customers || [])
       }
     } catch (err) {
-      // Fallback sample data
-      setCommunications([
-        {
-          id: 1,
-          type: 'whatsapp',
-          direction: 'outbound',
-          subject: 'Shared Kitengela Phase 2 plot pricing with client',
-          content: 'Sent brochure via WhatsApp. Client expressed interest in 1/8th acre plot #44 and requested site visit this Saturday.',
-          customer_name: 'James Mwangi',
-          customer_phone: '+254712345690',
-          user_name: 'John Sales',
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 2,
-          type: 'call',
-          direction: 'inbound',
-          subject: 'Inquiry on M-Pesa installment schedule',
-          content: 'Confirmed that monthly installment of KES 35,000 can be paid directly to tenant Paybill 600123 with plot number as account.',
-          customer_name: 'Grace Wanjiru',
-          customer_phone: '+254712345691',
-          duration_minutes: 8,
-          user_name: 'Paul Rep',
-          created_at: new Date(Date.now() - 3600000 * 5).toISOString()
-        }
-      ])
+      // Dynamic fallback sample data based on industry
+      if (industry === 'legal') {
+        setCommunications([
+          {
+            id: 1,
+            type: 'whatsapp',
+            direction: 'outbound',
+            subject: 'Sent draft Notice of Motion & Replying Affidavit',
+            content: 'Shared trial bundle with instructing client via WhatsApp. Client confirmed the averments and authorized filing.',
+            customer_name: 'Karanja Gachagua',
+            customer_phone: '+254711223344',
+            user_name: 'Counsel Kamau',
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 2,
+            type: 'call',
+            direction: 'inbound',
+            subject: 'Consultation on High Court Mention fixture',
+            content: 'Informed client of court directions given by Hon. Lady Justice Chepkwony regarding pre-trial conference.',
+            customer_name: 'Philip Oraro',
+            customer_phone: '+254712345691',
+            duration_minutes: 12,
+            user_name: 'Counsel Kamau',
+            created_at: new Date(Date.now() - 3600000 * 5).toISOString()
+          }
+        ])
+      } else if (industry === 'real_estate') {
+        setCommunications([
+          {
+            id: 1,
+            type: 'whatsapp',
+            direction: 'outbound',
+            subject: 'Shared Kitengela Phase 2 plot pricing with client',
+            content: 'Sent brochure via WhatsApp. Client expressed interest in 1/8th acre plot #44 and requested site visit this Saturday.',
+            customer_name: 'James Mwangi',
+            customer_phone: '+254712345690',
+            user_name: 'John Sales',
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 2,
+            type: 'call',
+            direction: 'inbound',
+            subject: 'Inquiry on M-Pesa installment schedule',
+            content: 'Confirmed that monthly installment of KES 35,000 can be paid directly to tenant Paybill 600123 with plot number as account.',
+            customer_name: 'Grace Wanjiru',
+            customer_phone: '+254712345691',
+            duration_minutes: 8,
+            user_name: 'Paul Rep',
+            created_at: new Date(Date.now() - 3600000 * 5).toISOString()
+          }
+        ])
+      } else {
+        // Commercial Core (general)
+        setCommunications([
+          {
+            id: 1,
+            type: 'whatsapp',
+            direction: 'outbound',
+            subject: 'Sent revised wholesale supply pricing catalogue',
+            content: 'Shared Q4 bulk discount tier for Fairlane Wholesale Distributors. Key account manager follow-up scheduled.',
+            customer_name: 'Sarah Ochieng',
+            customer_phone: '+254722889900',
+            user_name: 'Kamau Gitau',
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 2,
+            type: 'call',
+            direction: 'inbound',
+            subject: 'Review of credit terms & purchase order delivery',
+            content: 'Agreed on 30-day net credit terms for hardware shipment. Client issuing PO tomorrow.',
+            customer_name: 'David Mutua',
+            customer_phone: '+254712345691',
+            duration_minutes: 10,
+            user_name: 'Kamau Gitau',
+            created_at: new Date(Date.now() - 3600000 * 5).toISOString()
+          }
+        ])
+      }
     } finally {
       setIsLoading(false)
     }
@@ -206,7 +265,7 @@ const Communications = () => {
             </span>
           </div>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Track all client interactions, WhatsApp messages, phone calls, site visit meetings, and follow-ups.
+            Track all client interactions, WhatsApp messages, phone calls, meetings, and follow-ups.
           </p>
         </div>
 
@@ -386,7 +445,13 @@ const Communications = () => {
                   >
                     <option value="whatsapp">WhatsApp</option>
                     <option value="call">Phone Call</option>
-                    <option value="meeting">Meeting / Site Visit</option>
+                    <option value="meeting">
+                      {industry === 'legal'
+                        ? 'Client Conference / Court Hearing'
+                        : industry === 'real_estate'
+                        ? 'Meeting / Site Visit'
+                        : 'Business Meeting / Consultation'}
+                    </option>
                     <option value="email">Email</option>
                     <option value="note">Internal Note</option>
                   </select>

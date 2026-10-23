@@ -32,6 +32,16 @@ class Database {
       this.db.run('PRAGMA foreign_keys = ON');
 
       this.createTenantsTable();
+      this.db.run("ALTER TABLE tenants ADD COLUMN industry TEXT DEFAULT 'general'", () => {});
+      this.db.run("ALTER TABLE matters ADD COLUMN court_level TEXT", () => {});
+      this.db.run("ALTER TABLE matters ADD COLUMN court_station TEXT", () => {});
+      this.db.run("ALTER TABLE matters ADD COLUMN coram_title TEXT", () => {});
+      this.db.run("ALTER TABLE matters ADD COLUMN party_role TEXT DEFAULT 'Plaintiff'", () => {});
+      this.db.run("ALTER TABLE matters ADD COLUMN opposing_role TEXT DEFAULT 'Defendant'", () => {});
+      this.db.run("ALTER TABLE matters ADD COLUMN hearing_purpose TEXT", () => {});
+      this.db.run("ALTER TABLE matters ADD COLUMN disbursements_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE matters ADD COLUMN vat_amount_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE matters ADD COLUMN aro_scale TEXT", () => {});
       this.createUsersTable();
       this.createCountiesTable();
       this.createSubCountiesTable();
@@ -73,6 +83,7 @@ class Database {
         domain TEXT,
         kra_pin TEXT,
         plan TEXT DEFAULT 'starter',
+        industry TEXT DEFAULT 'general',
         status TEXT DEFAULT 'active',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -565,11 +576,20 @@ class Database {
         client_id INTEGER NOT NULL,
         practice_area TEXT DEFAULT 'General Practice',
         court_name TEXT,
+        court_level TEXT,
+        court_station TEXT,
+        coram_title TEXT,
+        party_role TEXT DEFAULT 'Plaintiff',
+        opposing_role TEXT DEFAULT 'Defendant',
+        hearing_purpose TEXT,
         judge_or_arbitrator TEXT,
         opposing_party TEXT,
         opposing_counsel TEXT,
         billing_type TEXT DEFAULT 'fixed_fee',
         fee_amount_kes REAL,
+        disbursements_kes REAL DEFAULT 0,
+        vat_amount_kes REAL DEFAULT 0,
+        aro_scale TEXT,
         hourly_rate_kes REAL,
         status TEXT NOT NULL DEFAULT 'active',
         priority TEXT DEFAULT 'medium',

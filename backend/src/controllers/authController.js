@@ -31,7 +31,7 @@ const register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Validation errors', errors: errors.array() });
     }
 
-    const { email, password, firstName, lastName, phone, role = 'admin', tenantName } = req.body;
+    const { email, password, firstName, lastName, phone, role = 'admin', tenantName, industry = 'general' } = req.body;
 
     const existingUsers = await db.query('SELECT id FROM users WHERE email = ?', [email]);
     if (existingUsers.length > 0) {
@@ -43,7 +43,7 @@ const register = async (req, res) => {
 
     await db.transaction(async (trx) => {
       let tName = tenantName || (firstName + "'s Organization");
-      const tResult = await trx.run('INSERT INTO tenants (name) VALUES (?)', [tName]);
+      const tResult = await trx.run('INSERT INTO tenants (name, industry) VALUES (?, ?)', [tName, industry]);
       const tenantId = tResult.insertId || tResult.id;
 
       const result = await trx.run(
@@ -53,7 +53,11 @@ const register = async (req, res) => {
       const userId = result.insertId || result.id;
 
       const users = await trx.query(
-        'SELECT id, tenant_id, email, first_name, last_name, phone, role, created_at FROM users WHERE id = ?',
+        `SELECT u.id, u.tenant_id, u.email, u.first_name, u.last_name, u.phone, u.role, u.created_at,
+                t.name as tenant_name, t.slug as tenant_slug, COALESCE(t.industry, 'general') as tenant_industry
+         FROM users u
+         LEFT JOIN tenants t ON u.tenant_id = t.id
+         WHERE u.id = ?`,
         [userId]
       );
       const user = users[0];
@@ -91,7 +95,8 @@ const registerTenant = async (req, res) => {
       firstName,
       lastName,
       phone,
-      plan = 'starter'
+      plan = 'starter',
+      industry = 'general'
     } = req.body;
 
     const normalizedSlug = slug.toLowerCase().trim();
@@ -117,19 +122,40 @@ const registerTenant = async (req, res) => {
 
     await db.transaction(async (trx) => {
       const tResult = await trx.run(
-        'INSERT INTO tenants (name, slug, kra_pin, plan, status) VALUES (?, ?, ?, ?, ?)',
-        [companyName, normalizedSlug, kraPin || null, plan, 'active']
+        'INSERT INTO tenants (name, slug, kra_pin, plan, industry, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [companyName, normalizedSlug, kraPin || null, plan, industry, 'active']
       );
       const tenantId = tResult.insertId || tResult.id;
 
-      const defaultStages = [
-        [tenantId, 'Prospecting', 1, 10, '#6c757d'],
-        [tenantId, 'Qualification', 2, 25, '#17a2b8'],
-        [tenantId, 'Proposal', 3, 50, '#ffc107'],
-        [tenantId, 'Negotiation', 4, 75, '#fd7e14'],
-        [tenantId, 'Closed Won', 5, 100, '#28a745'],
-        [tenantId, 'Closed Lost', 6, 0, '#dc3545']
-      ];
+      let defaultStages;
+      if (industry === 'legal') {
+        defaultStages = [
+          [tenantId, 'Consultation & Intake', 1, 20, '#6c757d'],
+          [tenantId, 'Pleadings & Demand Letter', 2, 40, '#17a2b8'],
+          [tenantId, 'Court Filing & Mention', 3, 60, '#ffc107'],
+          [tenantId, 'Hearing & Submissions', 4, 80, '#fd7e14'],
+          [tenantId, 'Judgment / Settled', 5, 100, '#28a745'],
+          [tenantId, 'Withdrawn / Dismissed', 6, 0, '#dc3545']
+        ];
+      } else if (industry === 'real_estate') {
+        defaultStages = [
+          [tenantId, 'Buyer Inquiry & Qualification', 1, 20, '#6c757d'],
+          [tenantId, 'Site Visit Scheduled', 2, 40, '#17a2b8'],
+          [tenantId, 'Letter of Offer Issued', 3, 60, '#ffc107'],
+          [tenantId, 'Sale Agreement & Deposit', 4, 80, '#fd7e14'],
+          [tenantId, 'Title Transfer / Closed Won', 5, 100, '#28a745'],
+          [tenantId, 'Deal Cancelled', 6, 0, '#dc3545']
+        ];
+      } else {
+        defaultStages = [
+          [tenantId, 'Prospecting & Inbound', 1, 10, '#6c757d'],
+          [tenantId, 'Lead Qualification', 2, 25, '#17a2b8'],
+          [tenantId, 'Quotation / Proposal', 3, 50, '#ffc107'],
+          [tenantId, 'Contract Negotiation', 4, 75, '#fd7e14'],
+          [tenantId, 'Closed Won / PO Issued', 5, 100, '#28a745'],
+          [tenantId, 'Closed Lost', 6, 0, '#dc3545']
+        ];
+      }
       for (const s of defaultStages) {
         await trx.run(
           'INSERT INTO deal_stages (tenant_id, name, order_index, probability, color) VALUES (?, ?, ?, ?, ?)',
@@ -152,7 +178,11 @@ const registerTenant = async (req, res) => {
       const refreshToken = await createRefreshToken(userId);
 
       const users = await trx.query(
-        'SELECT id, tenant_id, email, first_name, last_name, phone, role, created_at FROM users WHERE id = ?',
+        `SELECT u.id, u.tenant_id, u.email, u.first_name, u.last_name, u.phone, u.role, u.created_at,
+                t.name as tenant_name, t.slug as tenant_slug, COALESCE(t.industry, 'general') as tenant_industry
+         FROM users u
+         LEFT JOIN tenants t ON u.tenant_id = t.id
+         WHERE u.id = ?`,
         [userId]
       );
       const user = users[0];
@@ -218,7 +248,11 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     const users = await db.query(
-      'SELECT id, tenant_id, email, password_hash, first_name, last_name, phone, role, is_active FROM users WHERE email = ?',
+      `SELECT u.id, u.tenant_id, u.email, u.password_hash, u.first_name, u.last_name, u.phone, u.role, u.is_active,
+             t.name as tenant_name, t.slug as tenant_slug, COALESCE(t.industry, 'general') as tenant_industry
+      FROM users u
+      LEFT JOIN tenants t ON u.tenant_id = t.id
+      WHERE u.email = ?`,
       [email]
     );
 
@@ -261,6 +295,11 @@ const login = async (req, res) => {
         user: {
           id: user.id,
           tenant_id: user.tenant_id,
+          tenant_name: user.tenant_name,
+          tenant_slug: user.tenant_slug,
+          tenant_industry: user.tenant_industry || 'general',
+          first_name: user.first_name,
+          last_name: user.last_name,
           email: user.email,
           firstName: user.first_name,
           lastName: user.last_name,
@@ -360,7 +399,11 @@ const logout = async (req, res) => {
 const getMe = async (req, res) => {
   try {
     const users = await db.query(
-      'SELECT id, tenant_id, email, first_name, last_name, phone, role, is_active, last_login, created_at FROM users WHERE id = ?',
+      `SELECT u.id, u.tenant_id, u.email, u.first_name, u.last_name, u.phone, u.role, u.is_active, u.last_login, u.created_at,
+             t.name as tenant_name, t.slug as tenant_slug, COALESCE(t.industry, 'general') as tenant_industry
+      FROM users u
+      LEFT JOIN tenants t ON u.tenant_id = t.id
+      WHERE u.id = ?`,
       [req.user.id]
     );
 
@@ -376,6 +419,11 @@ const getMe = async (req, res) => {
         user: {
           id: user.id,
           tenant_id: user.tenant_id,
+          tenant_name: user.tenant_name,
+          tenant_slug: user.tenant_slug,
+          tenant_industry: user.tenant_industry || 'general',
+          first_name: user.first_name,
+          last_name: user.last_name,
           email: user.email,
           first_name: user.first_name,
           firstName: user.first_name,
@@ -414,7 +462,11 @@ const updateProfile = async (req, res) => {
     );
 
     const users = await db.query(
-      'SELECT id, tenant_id, email, first_name, last_name, phone, role, is_active, last_login, created_at FROM users WHERE id = ?',
+      `SELECT u.id, u.tenant_id, u.email, u.first_name, u.last_name, u.phone, u.role, u.is_active, u.last_login, u.created_at,
+             t.name as tenant_name, t.slug as tenant_slug, COALESCE(t.industry, 'general') as tenant_industry
+      FROM users u
+      LEFT JOIN tenants t ON u.tenant_id = t.id
+      WHERE u.id = ?`,
       [req.user.id]
     );
 
@@ -428,6 +480,11 @@ const updateProfile = async (req, res) => {
         user: {
           id: user.id,
           tenant_id: user.tenant_id,
+          tenant_name: user.tenant_name,
+          tenant_slug: user.tenant_slug,
+          tenant_industry: user.tenant_industry || 'general',
+          first_name: user.first_name,
+          last_name: user.last_name,
           email: user.email,
           first_name: user.first_name,
           firstName: user.first_name,

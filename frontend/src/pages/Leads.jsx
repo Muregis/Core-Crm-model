@@ -16,8 +16,12 @@ import {
   AlertCircle 
 } from 'lucide-react'
 import { leadService } from '../services/leadService'
+import { useAuthStore } from '../store/authStore'
 
 const Leads = () => {
+  const { user } = useAuthStore()
+  const industry = user?.tenant_industry || 'general'
+
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -169,15 +173,38 @@ const Leads = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Leads Pipeline</h1>
-          <p className="text-gray-600">Track, score, and convert prospective Kenyan SME & institutional clients.</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-gray-900">
+              {industry === 'legal'
+                ? 'Prospective Clients Pipeline'
+                : industry === 'real_estate'
+                ? 'Plot Inquiries & Buyers Pipeline'
+                : 'Sales Leads & Prospects'}
+            </h1>
+            <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-primary-100 text-primary-800">
+              {industry === 'legal' ? 'Legal Practice' : industry === 'real_estate' ? 'Real Estate' : 'Commercial Core'}
+            </span>
+          </div>
+          <p className="text-gray-600 mt-1">
+            {industry === 'legal'
+              ? 'Track, qualify, and onboard prospective instructing clients and legal advisory inquiries.'
+              : industry === 'real_estate'
+              ? 'Track, qualify, and convert prospective land buyers, site visits, and plot investors.'
+              : 'Track, score, and convert prospective B2B buyers and commercial enterprise accounts.'}
+          </p>
         </div>
         <button 
           onClick={() => setShowAddModal(true)}
           className="btn-primary inline-flex items-center space-x-2"
         >
           <Plus className="h-5 w-5" />
-          <span>New Lead</span>
+          <span>
+            {industry === 'legal'
+              ? 'New Prospective Client'
+              : industry === 'real_estate'
+              ? 'New Plot Inquiry'
+              : 'New Sales Lead'}
+          </span>
         </button>
       </div>
 
@@ -408,7 +435,13 @@ const Leads = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-40 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
             <div className="flex justify-between items-center border-b pb-3">
-              <h2 className="text-lg font-bold text-gray-900">Add New Lead</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                {industry === 'legal'
+                  ? 'Add Prospective Client'
+                  : industry === 'real_estate'
+                  ? 'Add Plot Inquiry'
+                  : 'Add New Sales Lead'}
+              </h2>
               <button
                 onClick={() => setShowAddModal(false)}
                 className="text-gray-400 hover:text-gray-600 text-xl font-bold"
@@ -476,7 +509,13 @@ const Leads = () => {
                 <input
                   type="text"
                   name="companyName"
-                  placeholder="e.g. Rift Valley Land Holdings"
+                  placeholder={
+                    industry === 'legal'
+                      ? 'e.g. Standard Chartered Bank Kenya'
+                      : industry === 'real_estate'
+                      ? 'e.g. Rift Valley Land Holdings Ltd'
+                      : 'e.g. Fairlane Wholesale Distributors Ltd'
+                  }
                   value={formData.companyName}
                   onChange={handleInputChange}
                   className="input w-full"
@@ -533,7 +572,13 @@ const Leads = () => {
                 <textarea
                   name="notes"
                   rows="3"
-                  placeholder="Inquired about 2-acre plot in Nanyuki or conveyancing service..."
+                  placeholder={
+                    industry === 'legal'
+                      ? 'e.g. Inquired about commercial contract dispute representation or constitutional petition...'
+                      : industry === 'real_estate'
+                      ? 'e.g. Inquired about 1/8th acre residential plot in Kitengela or title transfer terms...'
+                      : 'e.g. Inquired about wholesale hardware pricing and quarterly supply contract...'
+                  }
                   value={formData.notes}
                   onChange={handleInputChange}
                   className="input w-full"

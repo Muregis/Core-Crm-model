@@ -266,10 +266,176 @@ const deleteDeal = async (req, res) => {
   }
 };
 
+// @desc    Get deal stages for current tenant
+// @route   GET /api/deals/stages
+// @access  Private
+const getDealStages = async (req, res) => {
+  try {
+    const tenantRows = await db.query('SELECT industry FROM tenants WHERE id = ?', [req.user.tenant_id]);
+    const industry = tenantRows[0]?.industry || 'general';
+
+    let stages = await db.query(
+      'SELECT id, tenant_id, name, order_index, probability, color FROM deal_stages WHERE tenant_id = ? ORDER BY order_index ASC',
+      [req.user.tenant_id]
+    );
+
+    if (stages.length === 0) {
+      let defaultStages;
+      if (industry === 'legal') {
+        defaultStages = [
+          ['Consultation & Intake', 1, 20, '#6c757d'],
+          ['Pleadings & Demand Letter', 2, 40, '#17a2b8'],
+          ['Court Filing & Mention', 3, 60, '#ffc107'],
+          ['Hearing & Submissions', 4, 80, '#fd7e14'],
+          ['Judgment / Settled', 5, 100, '#28a745'],
+          ['Withdrawn / Dismissed', 6, 0, '#dc3545']
+        ];
+      } else if (industry === 'real_estate') {
+        defaultStages = [
+          ['Buyer Inquiry & Qualification', 1, 20, '#6c757d'],
+          ['Site Visit Scheduled', 2, 40, '#17a2b8'],
+          ['Letter of Offer Issued', 3, 60, '#ffc107'],
+          ['Sale Agreement & Deposit', 4, 80, '#fd7e14'],
+          ['Title Transfer / Closed Won', 5, 100, '#28a745'],
+          ['Deal Cancelled', 6, 0, '#dc3545']
+        ];
+      } else {
+        // Commercial Core (general)
+        defaultStages = [
+          ['Prospecting & Inbound', 1, 10, '#6c757d'],
+          ['Lead Qualification', 2, 25, '#17a2b8'],
+          ['Quotation / Proposal', 3, 50, '#ffc107'],
+          ['Contract Negotiation', 4, 75, '#fd7e14'],
+          ['Closed Won / PO Issued', 5, 100, '#28a745'],
+          ['Closed Lost', 6, 0, '#dc3545']
+        ];
+      }
+
+      for (const [sName, sOrder, sProb, sColor] of defaultStages) {
+        await db.query(
+          'INSERT INTO deal_stages (tenant_id, name, order_index, probability, color) VALUES (?, ?, ?, ?, ?)',
+          [req.user.tenant_id, sName, sOrder, sProb, sColor]
+        );
+      }
+      stages = await db.query(
+        'SELECT id, tenant_id, name, order_index, probability, color FROM deal_stages WHERE tenant_id = ? ORDER BY order_index ASC',
+        [req.user.tenant_id]
+      );
+    } else {
+      // Check if existing stages belong to another profession or have legacy mashed names
+      const hasCrossPollution = stages.some((s) => {
+        const n = (s.name || '').toLowerCase();
+        if (industry === 'real_estate') {
+          return n.includes('retainer') || n.includes('case intake') || n.includes('pleading') || n.includes('hearing');
+        }
+        if (industry === 'legal') {
+          return n.includes('plot') || n.includes('site visit') || n.includes('buyer inquiry') || n.includes('parcel');
+        }
+        if (industry === 'general') {
+          return n.includes('plot') || n.includes('site visit') || n.includes('retainer') || n.includes('case intake') || n.includes('pleading');
+        }
+        return false;
+      });
+
+      if (hasCrossPollution) {
+        let expectedStages;
+        if (industry === 'legal') {
+          expectedStages = [
+            ['Consultation & Intake', 1, 20, '#6c757d'],
+            ['Pleadings & Demand Letter', 2, 40, '#17a2b8'],
+            ['Court Filing & Mention', 3, 60, '#ffc107'],
+            ['Hearing & Submissions', 4, 80, '#fd7e14'],
+            ['Judgment / Settled', 5, 100, '#28a745'],
+            ['Withdrawn / Dismissed', 6, 0, '#dc3545']
+          ];
+        } else if (industry === 'real_estate') {
+          expectedStages = [
+            ['Buyer Inquiry & Qualification', 1, 20, '#6c757d'],
+            ['Site Visit Scheduled', 2, 40, '#17a2b8'],
+            ['Letter of Offer Issued', 3, 60, '#ffc107'],
+            ['Sale Agreement & Deposit', 4, 80, '#fd7e14'],
+            ['Title Transfer / Closed Won', 5, 100, '#28a745'],
+            ['Deal Cancelled', 6, 0, '#dc3545']
+          ];
+        } else {
+          expectedStages = [
+            ['Prospecting & Inbound', 1, 10, '#6c757d'],
+            ['Lead Qualification', 2, 25, '#17a2b8'],
+            ['Quotation / Proposal', 3, 50, '#ffc107'],
+            ['Contract Negotiation', 4, 75, '#fd7e14'],
+            ['Closed Won / PO Issued', 5, 100, '#28a745'],
+            ['Closed Lost', 6, 0, '#dc3545']
+          ];
+        }
+
+        for (let i = 0; i < expectedStages.length; i++) {
+          const [sName, sOrder, sProb, sColor] = expectedStages[i];
+          if (stages[i]) {
+            await db.query(
+              'UPDATE deal_stages SET name = ?, order_index = ?, probability = ?, color = ? WHERE id = ?',
+              [sName, sOrder, sProb, sColor, stages[i].id]
+            );
+          }
+        }
+
+        stages = await db.query(
+          'SELECT id, tenant_id, name, order_index, probability, color FROM deal_stages WHERE tenant_id = ? ORDER BY order_index ASC',
+          [req.user.tenant_id]
+        );
+      }
+    }
+
+    res.json({
+      success: true,
+      data: { stages }
+    });
+  } catch (error) {
+    logger.error('Get deal stages error:', error);
+    res.status(500).json({ success: false, message: 'Server error while fetching deal stages' });
+  }
+};
+
+// @desc    Update deal stage
+// @route   PUT /api/deals/:id/stage
+// @access  Private
+const updateDealStage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { stageId } = req.body;
+
+    if (!stageId) {
+      return res.status(400).json({ success: false, message: 'Valid stageId is required' });
+    }
+
+    const existing = await db.query('SELECT * FROM deals WHERE id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: 'Deal not found' });
+    }
+
+    await db.query(
+      'UPDATE deals SET deal_stage_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?',
+      [stageId, id, req.user.tenant_id]
+    );
+
+    const updated = await db.query('SELECT * FROM deals WHERE id = ? AND tenant_id = ?', [id, req.user.tenant_id]);
+
+    res.json({
+      success: true,
+      message: 'Deal stage updated successfully',
+      data: { deal: updated[0] }
+    });
+  } catch (error) {
+    logger.error('Update deal stage error:', error);
+    res.status(500).json({ success: false, message: 'Server error while updating deal stage' });
+  }
+};
+
 module.exports = {
   getDeals,
   getDeal,
   createDeal,
   updateDeal,
-  deleteDeal
+  deleteDeal,
+  getDealStages,
+  updateDealStage
 };

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { taskService } from '../services/taskService'
 import { customerService } from '../services/customerService'
+import { useAuthStore } from '../store/authStore'
 import EmptyState from '../components/EmptyState'
 import toast from 'react-hot-toast'
 
@@ -39,6 +40,9 @@ const TYPE_ICONS = {
 }
 
 const Tasks = () => {
+  const { user } = useAuthStore()
+  const industry = user?.tenant_industry || 'general'
+
   const [tasks, setTasks] = useState([])
   const [customers, setCustomers] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -71,31 +75,84 @@ const Tasks = () => {
         setCustomers(custRes.data.data.customers || [])
       }
     } catch (err) {
-      // Fallback sample tasks
-      setTasks([
-        {
-          id: 1,
-          title: 'Follow up with James Mwangi on Title Deed dispatch',
-          description: 'Client visited office last Friday. Send tracking details via WhatsApp.',
-          status: 'pending',
-          priority: 'high',
-          task_type: 'call',
-          due_date: new Date(Date.now() + 86400000).toISOString(),
-          customer_name: 'James Mwangi',
-          assigned_to_name: 'John Sales'
-        },
-        {
-          id: 2,
-          title: 'Prepare installment schedule for Plot #12',
-          description: 'Structure 12-month payment breakdown with 20% deposit.',
-          status: 'completed',
-          priority: 'medium',
-          task_type: 'follow_up',
-          due_date: new Date().toISOString(),
-          customer_name: 'Grace Wanjiru',
-          assigned_to_name: 'Paul Rep'
-        }
-      ])
+      // Dynamic fallback sample tasks based on industry
+      if (industry === 'legal') {
+        setTasks([
+          {
+            id: 1,
+            title: 'File trial bundle for HCCC NO. E098 OF 2026',
+            description: 'Order 11 CPR compliance bundle with indexed witness statements.',
+            status: 'pending',
+            priority: 'urgent',
+            task_type: 'follow_up',
+            due_date: new Date(Date.now() + 86400000).toISOString(),
+            customer_name: 'Karanja Gachagua',
+            assigned_to_name: 'Counsel Kamau'
+          },
+          {
+            id: 2,
+            title: 'Prepare witness statement of Mr. Karanja (Order 11 CPR)',
+            description: 'Draft affidavit in support of commercial damages claim.',
+            status: 'completed',
+            priority: 'high',
+            task_type: 'call',
+            due_date: new Date().toISOString(),
+            customer_name: 'Karanja Gachagua',
+            assigned_to_name: 'Counsel Kamau'
+          }
+        ])
+      } else if (industry === 'real_estate') {
+        setTasks([
+          {
+            id: 1,
+            title: 'Follow up with James Mwangi on Title Deed dispatch',
+            description: 'Client visited office last Friday. Send tracking details via WhatsApp.',
+            status: 'pending',
+            priority: 'high',
+            task_type: 'call',
+            due_date: new Date(Date.now() + 86400000).toISOString(),
+            customer_name: 'James Mwangi',
+            assigned_to_name: 'John Sales'
+          },
+          {
+            id: 2,
+            title: 'Prepare installment schedule for Plot #12',
+            description: 'Structure 12-month payment breakdown with 20% deposit.',
+            status: 'completed',
+            priority: 'medium',
+            task_type: 'follow_up',
+            due_date: new Date().toISOString(),
+            customer_name: 'Grace Wanjiru',
+            assigned_to_name: 'Paul Rep'
+          }
+        ])
+      } else {
+        // Commercial Core (general)
+        setTasks([
+          {
+            id: 1,
+            title: 'Dispatch quarterly product catalogue to Fairlane Distributors',
+            description: 'Send revised price index and discounts for bulk orders.',
+            status: 'pending',
+            priority: 'high',
+            task_type: 'email',
+            due_date: new Date(Date.now() + 86400000).toISOString(),
+            customer_name: 'Sarah Ochieng',
+            assigned_to_name: 'Kamau Gitau'
+          },
+          {
+            id: 2,
+            title: 'Review credit terms for Greenwood Medical hardware supply',
+            description: 'Verify 30-day invoice payment terms and approve Purchase Order.',
+            status: 'completed',
+            priority: 'medium',
+            task_type: 'follow_up',
+            due_date: new Date().toISOString(),
+            customer_name: 'David Mutua',
+            assigned_to_name: 'Kamau Gitau'
+          }
+        ])
+      }
     } finally {
       setIsLoading(false)
     }
@@ -406,7 +463,13 @@ const Tasks = () => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Call client regarding Plot #15 deposit"
+                  placeholder={
+                    industry === 'legal'
+                      ? 'e.g. Prepare witness statement for HCCC/E098/2026'
+                      : industry === 'real_estate'
+                      ? 'e.g. Call client regarding Plot #15 deposit'
+                      : 'e.g. Follow up with client on purchase order delivery'
+                  }
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-transparent dark:text-gray-100"

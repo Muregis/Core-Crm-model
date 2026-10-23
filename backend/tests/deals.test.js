@@ -110,6 +110,34 @@ describe('Deals API & Tenant Isolation', () => {
       expect(res.statusCode).toEqual(200);
       expect(res.body.data.deals.length).toBeGreaterThanOrEqual(1);
     });
+
+    it('should fetch deal stages for current tenant at /api/deals/stages', async () => {
+      const res = await request(app)
+        .get('/api/deals/stages')
+        .set('Authorization', `Bearer ${tenant1AdminToken}`);
+
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data.stages)).toBe(true);
+      expect(res.body.data.stages.length).toBeGreaterThan(0);
+    });
+
+    it('should update deal stage via /api/deals/:id/stage', async () => {
+      const stagesRes = await request(app)
+        .get('/api/deals/stages')
+        .set('Authorization', `Bearer ${tenant1AdminToken}`);
+      const stages = stagesRes.body.data.stages;
+      const targetStage = stages.length > 1 ? stages[1].id : 2;
+
+      const res = await request(app)
+        .put(`/api/deals/${tenant1Deal.id}/stage`)
+        .set('Authorization', `Bearer ${tenant1AdminToken}`)
+        .send({ stageId: targetStage });
+
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.deal.deal_stage_id).toBe(targetStage);
+    });
   });
 
   describe('Tenant Isolation for Deals', () => {

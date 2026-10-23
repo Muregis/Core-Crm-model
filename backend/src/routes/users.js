@@ -15,7 +15,7 @@ router.use(protect);
 router.get('/tenant', async (req, res) => {
   try {
     const tenants = await db.query(
-      'SELECT id, name, slug, domain, kra_pin, plan, status, created_at FROM tenants WHERE id = ?',
+      'SELECT id, name, slug, domain, kra_pin, plan, industry, status, created_at FROM tenants WHERE id = ?',
       [req.user.tenant_id]
     );
 
@@ -34,20 +34,21 @@ router.get('/tenant', async (req, res) => {
 // @access  Private/Admin
 router.put('/tenant', authorize('admin'), async (req, res) => {
   try {
-    const { name, domain, kraPin, plan } = req.body;
+    const { name, domain, kraPin, plan, industry } = req.body;
     await db.query(
       `UPDATE tenants SET
         name = COALESCE(?, name),
         domain = COALESCE(?, domain),
         kra_pin = COALESCE(?, kra_pin),
         plan = COALESCE(?, plan),
+        industry = COALESCE(?, industry),
         updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [name, domain, kraPin, plan, req.user.tenant_id]
+      [name, domain, kraPin, plan, industry, req.user.tenant_id]
     );
 
     const updated = await db.query(
-      'SELECT id, name, slug, domain, kra_pin, plan, status FROM tenants WHERE id = ?',
+      'SELECT id, name, slug, domain, kra_pin, plan, industry, status FROM tenants WHERE id = ?',
       [req.user.tenant_id]
     );
 

@@ -22,10 +22,14 @@ import {
 } from 'lucide-react'
 import { customerService } from '../services/customerService'
 import { formatCurrencyKES } from '../utils/formatters'
+import { useAuthStore } from '../store/authStore'
 import LoadingSpinner from '../components/LoadingSpinner'
 import toast from 'react-hot-toast'
 
 const CustomerDetail = () => {
+  const { user } = useAuthStore()
+  const industry = user?.tenant_industry || 'general'
+
   const { id } = useParams()
   const [customer, setCustomer] = useState(null)
   const [stats, setStats] = useState({ deals: [], communications: [], tasks: [], mpesa: [] })
@@ -47,35 +51,96 @@ const CustomerDetail = () => {
         })
       }
     } catch (err) {
-      // Fallback demo client
-      setCustomer({
-        id,
-        first_name: 'James',
-        last_name: 'Mwangi',
-        email: 'james.mwangi@email.com',
-        phone: '+254712345690',
-        company_name: 'Mwangi Enterprises Ltd',
-        customer_type: 'business',
-        status: 'active',
-        county_name: 'Nairobi',
-        sales_rep_name: 'John Sales',
-        notes: 'Interested in acquiring 2 plots in Kitengela Acacia Greens Phase 2. Prefers payments via M-Pesa Paybill.',
-        created_at: new Date().toISOString()
-      })
-      setStats({
-        deals: [
-          { id: 1, title: 'Kitengela Acacia 1/8th Acre Purchase', value: 1500000, status: 'won', stage_name: 'Closed Won' }
-        ],
-        communications: [
-          { id: 1, type: 'whatsapp', direction: 'outbound', subject: 'Brochure sent', content: 'Sent PDF brochure via WhatsApp.', created_at: new Date().toISOString() }
-        ],
-        tasks: [
-          { id: 1, title: 'Send title deed tracking details', status: 'pending', priority: 'high', due_date: new Date().toISOString() }
-        ],
-        mpesa: [
-          { id: 1, mpesa_receipt_number: 'QKD7289192', amount: 50000, status: 'completed', transaction_time: new Date().toISOString() }
-        ]
-      })
+      // Dynamic fallback demo client based on industry
+      if (industry === 'legal') {
+        setCustomer({
+          id,
+          first_name: 'Karanja',
+          last_name: 'Gachagua',
+          email: 'karanja@gachagua-enterprises.co.ke',
+          phone: '+254711223344',
+          company_name: 'Gachagua Commercial Properties Ltd',
+          customer_type: 'business',
+          status: 'active',
+          county_name: 'Nairobi',
+          sales_rep_name: 'Counsel Kamau',
+          notes: 'Instructing client on commercial damages litigation and judicial review petition.',
+          created_at: new Date().toISOString()
+        })
+        setStats({
+          deals: [
+            { id: 1, title: 'Commercial Litigation Retainer - HCCC/E098/2026', value: 350000, status: 'won', stage_name: 'Judgment / Settled' }
+          ],
+          communications: [
+            { id: 1, type: 'whatsapp', direction: 'outbound', subject: 'Draft Pleadings Sent', content: 'Sent indexed trial bundle via WhatsApp.', created_at: new Date().toISOString() }
+          ],
+          tasks: [
+            { id: 1, title: 'File trial bundle compliance (Order 11 CPR)', status: 'pending', priority: 'high', due_date: new Date().toISOString() }
+          ],
+          mpesa: [
+            { id: 1, mpesa_receipt_number: 'QKD7289192', amount: 150000, status: 'completed', transaction_time: new Date().toISOString() }
+          ]
+        })
+      } else if (industry === 'real_estate') {
+        setCustomer({
+          id,
+          first_name: 'James',
+          last_name: 'Mwangi',
+          email: 'james.mwangi@email.com',
+          phone: '+254712345690',
+          company_name: 'Mwangi Enterprises Ltd',
+          customer_type: 'business',
+          status: 'active',
+          county_name: 'Nairobi',
+          sales_rep_name: 'John Sales',
+          notes: 'Interested in acquiring 2 plots in Kitengela Acacia Greens Phase 2. Prefers payments via M-Pesa Paybill.',
+          created_at: new Date().toISOString()
+        })
+        setStats({
+          deals: [
+            { id: 1, title: 'Kitengela Acacia 1/8th Acre Purchase', value: 1500000, status: 'won', stage_name: 'Title Transfer / Closed Won' }
+          ],
+          communications: [
+            { id: 1, type: 'whatsapp', direction: 'outbound', subject: 'Brochure sent', content: 'Sent PDF plot brochure via WhatsApp.', created_at: new Date().toISOString() }
+          ],
+          tasks: [
+            { id: 1, title: 'Send title deed tracking details', status: 'pending', priority: 'high', due_date: new Date().toISOString() }
+          ],
+          mpesa: [
+            { id: 1, mpesa_receipt_number: 'QKD7289192', amount: 50000, status: 'completed', transaction_time: new Date().toISOString() }
+          ]
+        })
+      } else {
+        // Commercial Core (general)
+        setCustomer({
+          id,
+          first_name: 'Sarah',
+          last_name: 'Ochieng',
+          email: 'sarah@fairlane-distributors.co.ke',
+          phone: '+254722889900',
+          company_name: 'Fairlane Wholesale Distributors Ltd',
+          customer_type: 'business',
+          status: 'active',
+          county_name: 'Nairobi',
+          sales_rep_name: 'Kamau Gitau',
+          notes: 'Key distributor account for FMCG and retail goods in Nairobi and Central region.',
+          created_at: new Date().toISOString()
+        })
+        setStats({
+          deals: [
+            { id: 1, title: 'Annual FMCG Bulk Supply Agreement 2026/27', value: 3450000, status: 'won', stage_name: 'Closed Won / PO Issued' }
+          ],
+          communications: [
+            { id: 1, type: 'whatsapp', direction: 'outbound', subject: 'Wholesale Catalogue Sent', content: 'Sent revised Q4 price list via WhatsApp.', created_at: new Date().toISOString() }
+          ],
+          tasks: [
+            { id: 1, title: 'Dispatch quarterly product catalogue to Fairlane', status: 'pending', priority: 'high', due_date: new Date().toISOString() }
+          ],
+          mpesa: [
+            { id: 1, mpesa_receipt_number: 'QKD7289192', amount: 250000, status: 'completed', transaction_time: new Date().toISOString() }
+          ]
+        })
+      }
     } finally {
       setIsLoading(false)
     }

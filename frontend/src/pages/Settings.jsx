@@ -35,6 +35,7 @@ const Settings = () => {
     domain: '',
     kra_pin: '',
     plan: 'starter',
+    industry: 'general',
     status: 'active'
   })
   const [isSavingTenant, setIsSavingTenant] = useState(false)
@@ -135,9 +136,13 @@ const Settings = () => {
       await userService.updateTenant({
         name: tenant.name,
         domain: tenant.domain,
-        kraPin: tenant.kra_pin
+        kraPin: tenant.kra_pin,
+        industry: tenant.industry
       })
-      toast.success('Organization details saved successfully')
+      toast.success('Organization details & industry edition saved!')
+      if (useAuthStore.getState().checkAuth) {
+        useAuthStore.getState().checkAuth()
+      }
     } catch (err) {
       toast.error('Failed to update organization details')
     } finally {
@@ -349,6 +354,25 @@ const Settings = () => {
                 onChange={(e) => setTenant({ ...tenant, domain: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-transparent dark:text-gray-100"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                Industry Edition & Modular Workspace
+              </label>
+              <select
+                value={tenant.industry || 'general'}
+                onChange={(e) => setTenant({ ...tenant, industry: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-transparent dark:text-gray-100"
+              >
+                <option value="real_estate">🏢 Real Estate & Property (Land, Plots & Title Deeds)</option>
+                <option value="legal">⚖️ Law Firm & Legal Practice (Matters, Hearings & Time Billing)</option>
+                <option value="general">💼 General SME & Commerce (Clean Operational Core)</option>
+                <option value="all">🌐 Multi-Discipline Firm (Both Real Estate & Legal Packs)</option>
+              </select>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Customizes sidebar and modules so law firms don't see plot inventory, and property sellers don't see court litigation.
+              </p>
             </div>
 
             <div className="pt-2">

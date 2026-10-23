@@ -1,5 +1,5 @@
 // Sidebar.jsx
-// Primary navigation for the authenticated dashboard (desktop + mobile).
+// Primary navigation for the authenticated dashboard (desktop + mobile) with Industry-Pack specialization.
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { 
@@ -19,45 +19,75 @@ import {
 import { cn } from '../utils/cn'
 import { useAuthStore } from '../store/authStore'
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Customers', href: '/customers', icon: Users },
-  { name: 'Leads', href: '/leads', icon: Target },
-  { name: 'Deals', href: '/deals', icon: Briefcase },
-  { name: 'Land & Parcels', href: '/parcels', icon: Layers },
-  { name: 'Legal Matters', href: '/matters', icon: Scale },
-  { name: 'M-Pesa', href: '/mpesa', icon: CreditCard },
-  { name: 'Communications', href: '/communications', icon: MessageSquare },
-  { name: 'Tasks', href: '/tasks', icon: CheckSquare },
-  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { name: 'Settings', href: '/settings', icon: Settings },
-]
-
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation()
   const { user } = useAuthStore()
+
+  const industry = user?.tenant_industry || 'all'
+
+  // Dynamic navigation labels: each profession sees their own specialized terminology
+  const customersLabel = industry === 'legal' ? 'Clients' : industry === 'real_estate' ? 'Buyers & Clients' : 'Customer Accounts'
+  const leadsLabel = industry === 'legal' ? 'Prospective Clients' : industry === 'real_estate' ? 'Plot Inquiries' : 'Sales Leads'
+  const dealsLabel = industry === 'legal' ? 'Retainers & Briefs' : industry === 'real_estate' ? 'Land Deals' : 'Deals Pipeline'
+
+  const navigation = [
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: customersLabel, href: '/customers', icon: Users },
+    { name: leadsLabel, href: '/leads', icon: Target },
+    { name: dealsLabel, href: '/deals', icon: Briefcase },
+    // Land & Property Pack (Active for Real Estate & Multi-Discipline firms)
+    ...((industry === 'real_estate' || industry === 'all') ? [
+      { name: 'Land & Parcels', href: '/parcels', icon: Layers }
+    ] : []),
+    // Legal Practice Pack (Active for Law Firms & Multi-Discipline firms)
+    ...((industry === 'legal' || industry === 'all') ? [
+      { name: 'Legal Matters', href: '/matters', icon: Scale }
+    ] : []),
+    { name: 'M-Pesa Vault', href: '/mpesa', icon: CreditCard },
+    { name: 'Communications', href: '/communications', icon: MessageSquare },
+    { name: 'Tasks', href: '/tasks', icon: CheckSquare },
+    { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+    { name: 'Settings', href: '/settings', icon: Settings },
+  ]
 
   const userInitials = user?.first_name
     ? `${user.first_name[0]}${user.last_name ? user.last_name[0] : ''}`
     : 'U'
   const displayName = user?.first_name ? `${user.first_name} ${user.last_name || ''}` : 'User'
   const displayEmail = user?.email || 'user@example.com'
+  const tenantTitle = user?.tenant_name || 'Kenya CRM'
+
+  const editionLabel = 
+    industry === 'legal' ? 'Legal Practice Edition' :
+    industry === 'real_estate' ? 'Real Estate Edition' :
+    industry === 'general' ? 'Commercial Core' : 'Enterprise Edition'
 
   return (
     <>
       {/* Sidebar for desktop */}
       <div className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-50 lg:w-64 lg:flex-col">
         <div className="flex flex-col flex-grow bg-white border-r border-gray-200 pt-5 pb-4 overflow-y-auto dark:bg-gray-950 dark:border-gray-800">
-          {/* Logo */}
+          {/* Logo & Tenant Brand */}
           <div className="flex items-center flex-shrink-0 px-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                  <Phone className="h-5 w-5 text-white" />
+                <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center shadow-sm">
+                  {industry === 'legal' ? (
+                    <Scale className="h-5 w-5 text-white" />
+                  ) : industry === 'real_estate' ? (
+                    <Layers className="h-5 w-5 text-white" />
+                  ) : (
+                    <Phone className="h-5 w-5 text-white" />
+                  )}
                 </div>
               </div>
-              <div className="ml-3">
-                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Kenya CRM</h1>
+              <div className="ml-3 min-w-0">
+                <h1 className="text-base font-bold text-gray-900 dark:text-gray-100 truncate" title={tenantTitle}>
+                  {tenantTitle}
+                </h1>
+                <p className="text-[11px] font-semibold text-primary-600 dark:text-primary-400">
+                  {editionLabel}
+                </p>
               </div>
             </div>
           </div>
@@ -78,26 +108,26 @@ const Sidebar = ({ isOpen, onClose }) => {
                   )}
                   onClick={onClose}
                 >
-                  <item.icon className="mr-3 h-5 w-5" />
-                  {item.name}
+                  <item.icon className="sidebar-icon" />
+                  <span>{item.name}</span>
                 </Link>
               )
             })}
           </nav>
 
-          {/* User info */}
+          {/* User profile section */}
           <div className="flex-shrink-0 flex border-t border-gray-200 p-4 dark:border-gray-800">
-            <Link to="/profile" className="flex items-center group w-full">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-primary-100 text-primary-700 font-bold rounded-full flex items-center justify-center dark:bg-primary-950/60 dark:text-primary-300">
-                  <span className="text-xs uppercase">
-                    {userInitials}
-                  </span>
+            <Link to="/profile" className="flex-shrink-0 w-full group block">
+              <div className="flex items-center">
+                <div className="w-9 h-9 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 flex items-center justify-center font-bold text-sm">
+                  {userInitials}
                 </div>
-              </div>
-              <div className="ml-3 truncate">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover:text-primary-600 truncate">{displayName}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{displayEmail}</p>
+                <div className="ml-3 min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover:text-gray-900 truncate">
+                    {displayName}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{displayEmail}</p>
+                </div>
               </div>
             </Link>
           </div>
@@ -130,12 +160,19 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className="flex items-center flex-shrink-0 px-4">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                      <Phone className="h-5 w-5 text-white" />
+                    <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center">
+                      {industry === 'legal' ? (
+                        <Scale className="h-5 w-5 text-white" />
+                      ) : industry === 'real_estate' ? (
+                        <Layers className="h-5 w-5 text-white" />
+                      ) : (
+                        <Phone className="h-5 w-5 text-white" />
+                      )}
                     </div>
                   </div>
-                  <div className="ml-3">
-                    <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Kenya CRM</h1>
+                  <div className="ml-3 min-w-0">
+                    <h1 className="text-base font-bold text-gray-900 dark:text-gray-100 truncate">{tenantTitle}</h1>
+                    <p className="text-[11px] font-semibold text-primary-600 dark:text-primary-400">{editionLabel}</p>
                   </div>
                 </div>
               </div>
@@ -156,15 +193,29 @@ const Sidebar = ({ isOpen, onClose }) => {
                       )}
                       onClick={onClose}
                     >
-                      <item.icon className="mr-3 h-5 w-5" />
-                      {item.name}
+                      <item.icon className="sidebar-icon" />
+                      <span>{item.name}</span>
                     </Link>
                   )
                 })}
               </nav>
             </div>
+
+            {/* Mobile User profile */}
+            <div className="flex-shrink-0 flex border-t border-gray-200 p-4 dark:border-gray-800">
+              <Link to="/profile" className="flex-shrink-0 group block" onClick={onClose}>
+                <div className="flex items-center">
+                  <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm">
+                    {userInitials}
+                  </div>
+                  <div className="ml-3 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{displayName}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{displayEmail}</p>
+                  </div>
+                </div>
+              </Link>
+            </div>
           </div>
-          <div className="flex-shrink-0 w-14" />
         </div>
       </div>
     </>
