@@ -22,7 +22,6 @@ const jobsRoutes = require('./src/routes/jobs');
 const reportsRoutes = require('./src/routes/reports');
 
 const db = require('./src/config/database');
-
 const { resolveTenant } = require('./src/middleware/tenant');
 
 const app = express();
@@ -35,8 +34,8 @@ app.use(cors({
 }));
 
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
   message: {
     error: 'Too many requests from this IP, please try again later.'
   },
@@ -50,10 +49,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Tenant resolution from subdomain / headers / token
 app.use(resolveTenant);
 
-// Static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-app.use((req, res, next) => {
+// Static files (single registration)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use((req, res, next) => {
@@ -148,11 +144,7 @@ process.on('uncaughtException', (error) => {
 const PORT = process.env.PORT || 5000;
 
 if (require.main === module) {
-  const server = app.listen(PORT, () => {
-    logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
-    logger.info(`Database: ${process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite'}`);
-  });
-}
+  app.listen(PORT, () => {
     logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
     logger.info(`Database: ${process.env.NODE_ENV === 'production' ? 'MySQL' : 'SQLite'}`);
   });
