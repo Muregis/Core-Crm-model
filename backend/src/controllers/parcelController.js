@@ -10,6 +10,10 @@ function parseMoney(value) {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+function isUniqueConstraintError(error) {
+  return /UNIQUE|constraint failed/i.test(String(error && error.message));
+}
+
 async function recordStatusChange({ tenantId, parcelId, fromStatus, toStatus, userId, note }) {
   await db.query(
     `INSERT INTO parcel_status_history (tenant_id, parcel_id, from_status, to_status, changed_by, note)
@@ -123,12 +127,13 @@ const getParcel = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Parcel not found' });
     }
 
+    // id DESC is stable when created_at ties (SQLite second resolution)
     const history = await db.query(
       `SELECT h.*, (u.first_name || ' ' || u.last_name) AS changed_by_name
        FROM parcel_status_history h
        LEFT JOIN users u ON h.changed_by = u.id
        WHERE h.parcel_id = ? AND h.tenant_id = ?
-       ORDER BY h.created_at DESC
+       ORDER BY h.id DESC
        LIMIT 50`,
       [req.params.id, req.user.tenant_id]
     );
@@ -229,7 +234,7 @@ const createParcel = async (req, res) => {
 
     res.status(201).json({ success: true, data: { parcel: created[0] } });
   } catch (error) {
-    if (String(error.message || '').includes('UNIQUE')) {
+    if (isUniqueConstraintError(error)) {
       return res.status(409).json({
         success: false,
         message: 'A parcel with this title reference already exists for your tenant'
@@ -348,7 +353,7 @@ const updateParcel = async (req, res) => {
 
     res.json({ success: true, data: { parcel: updated[0] } });
   } catch (error) {
-    if (String(error.message || '').includes('UNIQUE')) {
+    if (isUniqueConstraintError(error)) {
       return res.status(409).json({
         success: false,
         message: 'A parcel with this title reference already exists for your tenant'
