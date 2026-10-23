@@ -3,7 +3,6 @@ const path = require('path');
 const fs = require('fs');
 const logger = require('../utils/logger');
 
-// Create database directory if it doesn't exist
 const dbDir = path.join(__dirname, '../../database');
 if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
@@ -24,7 +23,6 @@ class Database {
   }
 
   initTables() {
-    // Enable foreign keys
     this.db.run('PRAGMA foreign_keys = ON');
 
     this.createTenantsTable();
@@ -48,10 +46,12 @@ class Database {
     this.createTenantCredentialsTable();
     this.createRefreshTokensTable();
     this.createTokenBlocklistTable();
+    this.createParcelsTable();
+    this.createParcelStatusHistoryTable();
   }
 
   createTenantsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS tenants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -63,12 +63,11 @@ class Database {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createUsersTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
@@ -84,24 +83,22 @@ class Database {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createCountiesTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS counties (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         code TEXT NOT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createSubCountiesTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS sub_counties (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         county_id INTEGER NOT NULL,
@@ -109,24 +106,22 @@ class Database {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (county_id) REFERENCES counties(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createBusinessCategoriesTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS business_categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         description TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createCustomersTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
@@ -152,12 +147,11 @@ class Database {
         FOREIGN KEY (assigned_sales_rep_id) REFERENCES users(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createCustomerTagsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS customer_tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER,
@@ -166,12 +160,11 @@ class Database {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createCustomerTagRelationsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS customer_tag_relations (
         tenant_id INTEGER,
         customer_id INTEGER NOT NULL,
@@ -181,12 +174,11 @@ class Database {
         FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
         FOREIGN KEY (tag_id) REFERENCES customer_tags(id) ON DELETE CASCADE
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createLeadsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS leads (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
@@ -215,12 +207,11 @@ class Database {
         FOREIGN KEY (created_by) REFERENCES users(id),
         FOREIGN KEY (converted_to_customer_id) REFERENCES customers(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createDealStagesTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS deal_stages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER,
@@ -230,8 +221,7 @@ class Database {
         color TEXT DEFAULT '#007bff',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
-    `;
-    this.db.run(sql, () => {
+    `, () => {
       this.db.get('SELECT COUNT(*) as count FROM deal_stages', (err, row) => {
         if (!err && row && row.count === 0) {
           const defaultStages = [
@@ -242,8 +232,10 @@ class Database {
             ['Closed Won', 5, 100, '#28a745'],
             ['Closed Lost', 6, 0, '#dc3545']
           ];
-          const stmt = this.db.prepare('INSERT INTO deal_stages (name, order_index, probability, color) VALUES (?, ?, ?, ?)');
-          defaultStages.forEach(s => stmt.run(s));
+          const stmt = this.db.prepare(
+            'INSERT INTO deal_stages (name, order_index, probability, color) VALUES (?, ?, ?, ?)'
+          );
+          defaultStages.forEach((s) => stmt.run(s));
           stmt.finalize();
         }
       });
@@ -251,7 +243,7 @@ class Database {
   }
 
   createDealsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS deals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
@@ -277,12 +269,11 @@ class Database {
         FOREIGN KEY (assigned_sales_rep_id) REFERENCES users(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createMpesaTransactionsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS mpesa_transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
@@ -309,12 +300,11 @@ class Database {
         FOREIGN KEY (deal_id) REFERENCES deals(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createCommunicationsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS communications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
@@ -339,12 +329,11 @@ class Database {
         FOREIGN KEY (deal_id) REFERENCES deals(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createTasksTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
@@ -369,12 +358,11 @@ class Database {
         FOREIGN KEY (assigned_to) REFERENCES users(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createAttachmentsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS attachments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
@@ -394,12 +382,11 @@ class Database {
         FOREIGN KEY (deal_id) REFERENCES deals(id),
         FOREIGN KEY (uploaded_by) REFERENCES users(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createActivityLogTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS activity_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER,
@@ -415,12 +402,11 @@ class Database {
         FOREIGN KEY (tenant_id) REFERENCES tenants(id),
         FOREIGN KEY (user_id) REFERENCES users(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createSystemSettingsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS system_settings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER,
@@ -430,12 +416,11 @@ class Database {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createJobsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER,
@@ -456,12 +441,11 @@ class Database {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createTenantCredentialsTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS tenant_credentials (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL,
@@ -477,12 +461,11 @@ class Database {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createRefreshTokensTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS refresh_tokens (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -492,20 +475,70 @@ class Database {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
       )
-    `;
-    this.db.run(sql);
+    `);
   }
 
   createTokenBlocklistTable() {
-    const sql = `
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS token_blocklist (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         token_hash TEXT UNIQUE NOT NULL,
         expires_at TEXT NOT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
-    `;
-    this.db.run(sql);
+    `);
+  }
+
+  createParcelsTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS parcels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        title_ref TEXT NOT NULL,
+        plot_number TEXT,
+        name TEXT,
+        size_acres REAL,
+        size_unit TEXT DEFAULT 'acres',
+        county TEXT,
+        ward TEXT,
+        location_notes TEXT,
+        zoning TEXT,
+        status TEXT NOT NULL DEFAULT 'available',
+        list_price_kes REAL,
+        currency TEXT DEFAULT 'KES',
+        deal_id INTEGER,
+        owner_customer_id INTEGER,
+        notes TEXT,
+        created_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (deal_id) REFERENCES deals(id),
+        FOREIGN KEY (owner_customer_id) REFERENCES customers(id),
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        UNIQUE (tenant_id, title_ref)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_parcels_tenant_status ON parcels(tenant_id, status)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_parcels_tenant_county ON parcels(tenant_id, county)');
+  }
+
+  createParcelStatusHistoryTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS parcel_status_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        parcel_id INTEGER NOT NULL,
+        from_status TEXT,
+        to_status TEXT NOT NULL,
+        changed_by INTEGER,
+        note TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (parcel_id) REFERENCES parcels(id),
+        FOREIGN KEY (changed_by) REFERENCES users(id)
+      )
+    `);
   }
 
   forTenant(tenantId) {
@@ -516,10 +549,23 @@ class Database {
     return {
       async query(sql, params = []) {
         const upper = sql.toUpperCase();
-        const tenantTables = ['CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS', 'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS'];
-        const touchesTenantTable = tenantTables.some(t => upper.includes(t));
+        const tenantTables = [
+          'CUSTOMERS',
+          'LEADS',
+          'DEALS',
+          'TASKS',
+          'COMMUNICATIONS',
+          'MPESA_TRANSACTIONS',
+          'JOBS',
+          'TENANT_CREDENTIALS',
+          'PARCELS',
+          'PARCEL_STATUS_HISTORY'
+        ];
+        const touchesTenantTable = tenantTables.some((t) => upper.includes(t));
         if (touchesTenantTable && !upper.includes('TENANT_ID')) {
-          throw new Error(`Tenant safety violation: query against tenant table lacks tenant_id constraint: ${sql}`);
+          throw new Error(
+            `Tenant safety violation: query against tenant table lacks tenant_id constraint: ${sql}`
+          );
         }
         return self.query(sql, params);
       },
@@ -556,7 +602,7 @@ class Database {
 
   async run(sql, params = []) {
     return new Promise((resolve, reject) => {
-      this.db.run(sql, params, function(err) {
+      this.db.run(sql, params, function (err) {
         if (err) {
           logger.error('Database run error:', err);
           reject(err);
@@ -571,20 +617,22 @@ class Database {
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
         this.db.run('BEGIN TRANSACTION');
-        
+
         const transactionDb = {
-          run: (sql, params) => new Promise((res, rej) => {
-            this.db.run(sql, params, function(err) {
-              if (err) rej(err);
-              else res({ id: this.lastID, changes: this.changes });
-            });
-          }),
-          query: (sql, params) => new Promise((res, rej) => {
-            this.db.all(sql, params, (err, rows) => {
-              if (err) rej(err);
-              else res(rows);
-            });
-          })
+          run: (sql, params) =>
+            new Promise((res, rej) => {
+              this.db.run(sql, params, function (err) {
+                if (err) rej(err);
+                else res({ id: this.lastID, changes: this.changes });
+              });
+            }),
+          query: (sql, params) =>
+            new Promise((res, rej) => {
+              this.db.all(sql, params, (err, rows) => {
+                if (err) rej(err);
+                else res(rows);
+              });
+            })
         };
 
         try {
