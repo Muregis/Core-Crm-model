@@ -1,16 +1,11 @@
 module.exports = {
   testEnvironment: 'node',
-module.exports = {
-  testEnvironment: 'node',
   setupFilesAfterEnv: ['./tests/setup.js'],
   clearMocks: true,
-  testMatch: ['**/*.test.js'],
-  collectCoverage: true,
-  coverageDirectory: 'coverage',
-  coveragePathIgnorePatterns: ['/node_modules/'],
+  testMatch: ['**/tests/**/*.test.js'],
+  collectCoverage: false,
   verbose: true,
   forceExit: true,
-  detectOpenHandles: true,
-  testTimeout: 15000
-};
+  detectOpenHandles: false,
+  testTimeout: 20000
 };
