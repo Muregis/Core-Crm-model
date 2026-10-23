@@ -5,9 +5,25 @@
 CREATE DATABASE IF NOT EXISTS kenya_crm CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE kenya_crm;
 
+-- Tenants table (Multi-Company SaaS Isolation)
+CREATE TABLE IF NOT EXISTS tenants (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(100) UNIQUE,
+    domain VARCHAR(255),
+    kra_pin VARCHAR(50),
+    plan VARCHAR(50) DEFAULT 'starter',
+    status ENUM('active', 'suspended', 'trial', 'cancelled') DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_slug (slug),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Users table for authentication and role management
 CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     first_name VARCHAR(100) NOT NULL,
@@ -18,6 +34,8 @@ CREATE TABLE users (
     last_login DATETIME,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    INDEX idx_tenant (tenant_id),
     INDEX idx_email (email),
     INDEX idx_role (role),
     INDEX idx_active (is_active)
@@ -378,3 +396,91 @@ LEFT JOIN deals d ON u.id = d.assigned_sales_rep_id
 LEFT JOIN leads l ON u.id = l.assigned_sales_rep_id
 WHERE u.role IN ('sales_rep', 'manager', 'admin')
 GROUP BY u.id;
+
+-- Tenant Credentials (M-Pesa Daraja & external encrypted vault)
+CREATE TABLE IF NOT EXISTS tenant_credentials (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    provider VARCHAR(50) NOT NULL,
+    shortcode VARCHAR(50) NOT NULL,
+    key_type VARCHAR(50) DEFAULT 'paybill',
+    consumer_key_encrypted TEXT NOT NULL,
+    consumer_secret_encrypted TEXT NOT NULL,
+    passkey_encrypted TEXT NULL,
+    iv VARCHAR(64) NOT NULL,
+    is_sandbox BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    INDEX idx_provider_shortcode (provider, shortcode),
+    INDEX idx_tenant_provider (tenant_id, provider)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Refresh Tokens for Token Rotation
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    expires_at DATETIME NOT NULL,
+    revoked BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_token_hash (token_hash),
+    INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Token Blocklist for Instant Revocation
+CREATE TABLE IF NOT EXISTS token_blocklist (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_block_hash (token_hash),
+    INDEX idx_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Land & Property Inventory (Industry Pack 1)
+CREATE TABLE IF NOT EXISTS parcels (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    title_ref VARCHAR(100) NOT NULL,
+    plot_number VARCHAR(100),
+    name VARCHAR(255),
+    size_acres DECIMAL(10, 4),
+    size_unit VARCHAR(20) DEFAULT 'acres',
+    county VARCHAR(100),
+    ward VARCHAR(100),
+    location_notes TEXT,
+    zoning VARCHAR(100),
+    status ENUM('available', 'reserved', 'sold', 'withdrawn') DEFAULT 'available',
+    list_price_kes DECIMAL(14, 2),
+    currency VARCHAR(3) DEFAULT 'KES',
+    deal_id INT,
+    owner_customer_id INT,
+    notes TEXT,
+    created_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (deal_id) REFERENCES deals(id) ON DELETE SET NULL,
+    FOREIGN KEY (owner_customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE KEY uq_tenant_title (tenant_id, title_ref),
+    INDEX idx_parcels_status (tenant_id, status),
+    INDEX idx_parcels_county (tenant_id, county)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Parcel Status History (Auditing status changes: available -> reserved -> sold)
+CREATE TABLE IF NOT EXISTS parcel_status_history (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    parcel_id INT NOT NULL,
+    from_status VARCHAR(50),
+    to_status VARCHAR(50) NOT NULL,
+    changed_by INT,
+    note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (parcel_id) REFERENCES parcels(id) ON DELETE CASCADE,
+    FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

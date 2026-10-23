@@ -14,6 +14,9 @@ import Leads from './pages/Leads'
 import Deals from './pages/Deals'
 import Analytics from './pages/Analytics'
 import Tasks from './pages/Tasks'
+import Mpesa from './pages/Mpesa'
+import Communications from './pages/Communications'
+import Parcels from './pages/Parcels'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 import LoadingSpinner from './components/LoadingSpinner'
@@ -56,6 +59,9 @@ function App() {
         <Route path="/deals" element={<Deals />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/tasks" element={<Tasks />} />
+        <Route path="/mpesa" element={<Mpesa />} />
+        <Route path="/communications" element={<Communications />} />
+        <Route path="/parcels" element={<Parcels />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin/jobs" element={<JobDashboard />} />

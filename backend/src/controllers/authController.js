@@ -31,7 +31,7 @@ const register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Validation errors', errors: errors.array() });
     }
 
-    const { email, password, firstName, lastName, phone, role = 'sales_rep', tenantName } = req.body;
+    const { email, password, firstName, lastName, phone, role = 'admin', tenantName } = req.body;
 
     const existingUsers = await db.query('SELECT id FROM users WHERE email = ?', [email]);
     if (existingUsers.length > 0) {

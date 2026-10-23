@@ -12,24 +12,34 @@ import {
   Settings, 
   Phone,
   CreditCard,
-  MessageSquare
+  MessageSquare,
+  Layers
 } from 'lucide-react'
 import { cn } from '../utils/cn'
+import { useAuthStore } from '../store/authStore'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Leads', href: '/leads', icon: Target },
   { name: 'Deals', href: '/deals', icon: Briefcase },
-  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { name: 'Tasks', href: '/tasks', icon: CheckSquare },
+  { name: 'Land & Parcels', href: '/parcels', icon: Layers },
   { name: 'M-Pesa', href: '/mpesa', icon: CreditCard },
   { name: 'Communications', href: '/communications', icon: MessageSquare },
+  { name: 'Tasks', href: '/tasks', icon: CheckSquare },
+  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation()
+  const { user } = useAuthStore()
+
+  const userInitials = user?.first_name
+    ? `${user.first_name[0]}${user.last_name ? user.last_name[0] : ''}`
+    : 'U'
+  const displayName = user?.first_name ? `${user.first_name} ${user.last_name || ''}` : 'User'
+  const displayEmail = user?.email || 'user@example.com'
 
   return (
     <>
@@ -75,19 +85,19 @@ const Sidebar = ({ isOpen, onClose }) => {
 
           {/* User info */}
           <div className="flex-shrink-0 flex border-t border-gray-200 p-4 dark:border-gray-800">
-            <div className="flex items-center">
+            <Link to="/profile" className="flex items-center group w-full">
               <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center dark:bg-gray-800">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                    {/* User initials would go here */}
+                <div className="w-8 h-8 bg-primary-100 text-primary-700 font-bold rounded-full flex items-center justify-center dark:bg-primary-950/60 dark:text-primary-300">
+                  <span className="text-xs uppercase">
+                    {userInitials}
                   </span>
                 </div>
               </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-200">User Name</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">user@example.com</p>
+              <div className="ml-3 truncate">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover:text-primary-600 truncate">{displayName}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{displayEmail}</p>
               </div>
-            </div>
+            </Link>
           </div>
         </div>
       </div>
