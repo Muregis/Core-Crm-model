@@ -17,8 +17,6 @@ async function enqueueReportJob(data) {
     throw new Error('Unsupported report type');
   }
 
-  // BullMQ job IDs are queue-global. Prefix client idempotency keys with the
-  // authenticated tenant so two companies cannot collide on the same key.
   const idempotencyKey = typeof data.idempotencyKey === 'string'
     ? data.idempotencyKey.trim().slice(0, 120)
     : '';
@@ -33,8 +31,6 @@ async function enqueueReportJob(data) {
     userId
   };
 
-  // Create the tenant-owned audit row before the worker can pick up the job.
-  // The `jobs` table uses `result` in the current SQLite schema.
   const existing = await db.query(
     'SELECT job_id, tenant_id, status FROM jobs WHERE job_id = ? AND tenant_id = ?',
     [jobId, tenantId]

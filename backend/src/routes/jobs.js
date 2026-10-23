@@ -35,7 +35,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Tenant-scoped audit counts, not global Redis queue counts.
 router.get('/stats', async (req, res) => {
   try {
     const rows = await db.query(
@@ -54,7 +53,8 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// Worker inventory is platform-wide operational data; restrict to platform admins.
+// Platform-wide worker inventory. Role is tenant admin today; restrict further
+// when a true platform-operator role is introduced.
 router.get('/workers/active', authorize('admin'), async (req, res) => {
   try {
     const activeWorkers = [];
@@ -89,8 +89,6 @@ router.get('/:id/result', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    // Verify tenant ownership in MySQL/SQLite before touching Redis. A BullMQ
-    // job ID alone is not authorization.
     const row = await findOwnedJob(req.params.id, req.user.tenant_id);
     if (!row) return res.status(404).json({ success: false, message: 'Job not found' });
 

@@ -66,8 +66,6 @@ async function processReport(job) {
     );
     return result;
   } catch (error) {
-    // Persist the failure state but rethrow so BullMQ's configured retry policy
-    // remains authoritative. A subsequent successful attempt clears the error.
     await db.query(
       'UPDATE jobs SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?',
       ['waiting', String(error.message || 'Report failed').slice(0, 1000), String(job.id), tenantId]
