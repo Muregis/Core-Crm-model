@@ -14,8 +14,6 @@ async function generateSalesSummary(tenantId) {
     throw new Error('Refusing to generate a report without a valid tenant');
   }
 
-  // All aggregations are tenant-scoped. Query errors are thrown so BullMQ can
-  // retry them; returning fabricated zeros would falsely report success.
   const totalRows = await db.query(
     'SELECT COUNT(*) AS total_deals FROM deals WHERE tenant_id = ?',
     [tenantId]
@@ -47,21 +45,23 @@ async function processReport(job) {
     throw new Error('Report job is missing tenant context');
   }
 
+  const attemptNumber = (job.attemptsMade || 0) + 1;
+
   await db.query(
-    'UPDATE jobs SET status = ?, started_at = CURRENT_TIMESTAMP, attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?',
-    ['active', String(job.id), tenantId]
+    'UPDATE jobs SET status = ?, started_at = CURRENT_TIMESTAMP, attempts = ?, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?',
+    ['active', attemptNumber, String(job.id), tenantId]
   );
 
   logger.info('Processing tenant-scoped sales report', {
     jobId: job.id,
     tenantId,
-    attempt: job.attemptsMade + 1
+    attempt: attemptNumber
   });
 
   try {
     const result = await generateSalesSummary(tenantId);
     await db.query(
-      'UPDATE jobs SET status = ?, result = ?, completed_at = CURRENT_TIMESTAMP, error_message = NULL, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?',
+      'UPDATE jobs SET status = ?, result = ?, completed_at = CURRENT_TIMESTAMP, error_message = NULL, failed_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?',
       ['completed', JSON.stringify(result), String(job.id), tenantId]
     );
     return result;
@@ -92,21 +92,36 @@ function setupReportWorker() {
   worker.on('failed', async (job, error) => {
     if (!job?.id) return;
     const tenantId = job.data?.tenantId;
+    const maxAttempts = (job.opts && job.opts.attempts) || 3;
+    const attemptsMade = job.attemptsMade || 0;
+    const isFinal = attemptsMade >= maxAttempts;
+
     logger.error('Report job failed', {
       jobId: job.id,
       tenantId,
-      message: error.message
+      message: error.message,
+      attemptsMade,
+      maxAttempts,
+      isFinal
     });
-    if (tenantId) {
+
+    if (!tenantId) return;
+
+    if (isFinal) {
       await db.query(
-        'UPDATE jobs SET status = ?, error_message = ?, failed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?',
-        ['failed', String(error.message || 'Report failed').slice(0, 1000), String(job.id), tenantId]
+        'UPDATE jobs SET status = ?, error_message = ?, failed_at = CURRENT_TIMESTAMP, attempts = ?, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?',
+        ['failed', String(error.message || 'Report failed').slice(0, 1000), attemptsMade, String(job.id), tenantId]
       ).catch((persistError) => {
         logger.error('Could not persist final report failure', {
           jobId: job.id,
           message: persistError.message
         });
       });
+    } else {
+      await db.query(
+        'UPDATE jobs SET status = ?, error_message = ?, attempts = ?, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?',
+        ['waiting', String(error.message || 'Report failed').slice(0, 1000), attemptsMade, String(job.id), tenantId]
+      ).catch(() => {});
     }
   });
 
