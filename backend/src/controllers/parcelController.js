@@ -533,6 +533,17 @@ const getPlotMatrix = async (req, res) => {
       }
     }
 
+    const parcelsFlatList = parcels.map((p) => ({
+      ...p,
+      active_reservation: p.active_reservation_id ? {
+        id: p.active_reservation_id,
+        letter_of_offer_ref: p.letter_of_offer_ref,
+        expires_at: p.hold_expires_at,
+        hold_duration_hours: p.hold_duration_hours,
+        deposit_required_kes: p.deposit_required_kes
+      } : null
+    }));
+
     res.json({
       success: true,
       data: {
@@ -544,7 +555,15 @@ const getPlotMatrix = async (req, res) => {
           totalValuationKes: totalValuation,
           availableRate: parcels.length > 0 ? Math.round((totalAvailable / parcels.length) * 100) : 0
         },
-        projects: Object.values(projectsMap)
+        counts: {
+          total: parcels.length,
+          available: totalAvailable,
+          reserved: totalReserved,
+          sold: totalSold,
+          totalValuationKes: totalValuation
+        },
+        projects: Object.values(projectsMap),
+        parcels: parcelsFlatList
       }
     });
   } catch (error) {

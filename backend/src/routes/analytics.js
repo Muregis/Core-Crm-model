@@ -1,15 +1,26 @@
 const express = require('express');
 const { protect, authorize } = require('../middleware/auth');
 const { enqueueReportJob } = require('../jobs/producers/reportProducer');
+const {
+  getAnalyticsOverview,
+  getExpenditures,
+  createExpenditure,
+  deleteExpenditure
+} = require('../controllers/analyticsController');
 const logger = require('../utils/logger');
 
 const router = express.Router();
 
 router.use(protect);
 
-router.get('/', (req, res) => {
-  res.json({ success: true, message: 'Analytics endpoint' });
-});
+// Executive & Boardroom Analytics
+router.get('/', getAnalyticsOverview);
+router.get('/overview', getAnalyticsOverview);
+
+// Operating Expenditure Management
+router.get('/expenses', getExpenditures);
+router.post('/expenses', authorize('admin', 'manager'), createExpenditure);
+router.delete('/expenses/:id', authorize('admin'), deleteExpenditure);
 
 /**
  * POST /api/analytics/sales-report

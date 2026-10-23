@@ -72,6 +72,7 @@ class Database {
       this.createProductsTable();
       this.createInvoicesTable();
       this.createInvoiceItemsTable();
+      this.createExpendituresTable();
 
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN invoice_id INTEGER", () => {});
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN installment_id INTEGER", () => {});
@@ -808,6 +809,33 @@ class Database {
   }
 
 
+    createExpendituresTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS expenditures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        amount_kes REAL NOT NULL,
+        expense_date TEXT NOT NULL,
+        assigned_user_id INTEGER,
+        deal_id INTEGER,
+        payment_method TEXT DEFAULT 'mpesa_b2b',
+        receipt_ref TEXT,
+        notes TEXT,
+        created_by INTEGER NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (assigned_user_id) REFERENCES users(id),
+        FOREIGN KEY (deal_id) REFERENCES deals(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_expenditures_tenant ON expenditures(tenant_id, expense_date)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_expenditures_user ON expenditures(assigned_user_id)');
+  }
+
   forTenant(tenantId) {
     if (!tenantId) {
       throw new Error('Tenant safety violation: tenantId is required for scoped database operations');
@@ -819,7 +847,7 @@ class Database {
         const tenantTables = [
           'CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS',
           'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS', 'PARCELS', 'PARCEL_STATUS_HISTORY',
-          'MATTERS', 'MATTER_TIME_ENTRIES', 'PARCEL_RESERVATIONS', 'DEAL_INSTALLMENTS', 'CONVEYANCING_MATTERS', 'PRODUCTS', 'INVOICES', 'INVOICE_ITEMS'
+          'MATTERS', 'MATTER_TIME_ENTRIES', 'PARCEL_RESERVATIONS', 'DEAL_INSTALLMENTS', 'CONVEYANCING_MATTERS', 'PRODUCTS', 'INVOICES', 'INVOICE_ITEMS', 'EXPENDITURES'
         ];
         const touchesTenantTable = tenantTables.some((t) => upper.includes(t));
         if (touchesTenantTable && !upper.includes('TENANT_ID')) {

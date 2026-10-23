@@ -690,3 +690,28 @@ CREATE TABLE IF NOT EXISTS invoice_items (
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
     INDEX idx_item_invoice (invoice_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- Operating Expenditures & Overhead Tracking
+CREATE TABLE IF NOT EXISTS expenditures (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id INT NOT NULL,
+    category ENUM('payroll', 'marketing_leads', 'operations_logistics', 'commissions', 'legal_regulatory', 'office_overhead', 'other') NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    amount_kes DECIMAL(14, 2) NOT NULL,
+    expense_date DATE NOT NULL,
+    assigned_user_id INT,
+    deal_id INT,
+    payment_method VARCHAR(50) DEFAULT 'mpesa_b2b',
+    receipt_ref VARCHAR(100),
+    notes TEXT,
+    created_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (deal_id) REFERENCES deals(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_exp_tenant_date (tenant_id, expense_date),
+    INDEX idx_exp_user (assigned_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
