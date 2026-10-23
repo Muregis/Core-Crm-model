@@ -54,6 +54,8 @@ afterEach(async () => {
     'token_blocklist',
     'refresh_tokens',
     'tenant_credentials',
+    'parcel_status_history',
+    'parcels',
     'jobs',
     'activity_log',
     'attachments',
