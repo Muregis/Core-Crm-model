@@ -1,19 +1,14 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   backend-test:
     name: Backend Tests & Quality
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -42,20 +37,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-          cache-dependency-path: backend/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Syntax check entrypoints
+        run: |
+          node --check server.js
+          node --check scripts/migrate.js
+          node --check workers/report.worker.js
+          node --check src/queue/events.js
+          node --check src/routes/jobs.js
+          node --check src/routes/reports.js
 
-      - name: Syntax Check
-        run: node --check server.js
-
-      - name: Run Test Suite (Auth, RBAC, Multi-tenancy, Queues, CRUD)
+      - name: Run test suite
         run: npm test -- --passWithNoTests
         env:
           NODE_ENV: test
@@ -64,7 +61,7 @@ jobs:
           REDIS_PORT: 6379
 
   frontend-build:
-    name: Frontend Build & Validation
+    name: Frontend Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,23 +75,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20.x
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Production Assets
+      - name: Build production assets
         run: npm run build
         env:
           VITE_API_URL: http://localhost:5000/api
 
   docker-compose-check:
-    name: Docker Configuration Validation
+    name: Docker Compose Validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate Docker Compose Configuration
+      - name: Validate docker compose
         run: docker compose config

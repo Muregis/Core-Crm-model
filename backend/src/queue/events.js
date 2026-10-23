@@ -5,64 +5,63 @@ const db = require('../config/database');
 
 /**
  * Queue events mirror BullMQ lifecycle onto the jobs audit table.
- * Authority rules:
- * - Producers create rows WITH tenant_id.
- * - Events only UPDATE existing rows, preferably scoped by tenant_id.
- * - Attempts are owned by the worker (set from job.attemptsMade), not incremented here.
- * - "failed" status means retries are exhausted (final). Retryable failures stay "waiting"/"active".
+ * Rules:
+ * - Producers create rows WITH a trusted tenant_id.
+ * - Events only UPDATE rows that already have tenant_id.
+ * - Never update by job_id alone (no unscoped fallback).
+ * - Attempts are owned by the worker, not incremented here.
+ * - status=failed means retries exhausted.
  */
 
-async function loadJobRow(jobId) {
+async function loadTenantScopedJob(jobId) {
   const rows = await db.query(
     'SELECT job_id, tenant_id, status, attempts, max_attempts FROM jobs WHERE job_id = ? LIMIT 1',
     [String(jobId)]
   );
-  return rows && rows.length ? rows[0] : null;
+  const row = rows && rows.length ? rows[0] : null;
+  if (!row) return null;
+  if (row.tenant_id == null || row.tenant_id === '') {
+    logger.error('Refusing unscoped job update: missing tenant_id', { jobId });
+    return null;
+  }
+  return row;
 }
 
-async function updateJob(jobId, tenantId, sets, params) {
-  if (tenantId != null && tenantId !== '') {
-    await db.query(
-      `UPDATE jobs SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?`,
-      [...params, String(jobId), tenantId]
-    );
-  } else {
-    await db.query(
-      `UPDATE jobs SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE job_id = ?`,
-      [...params, String(jobId)]
-    );
-  }
+async function updateTenantJob(jobId, tenantId, sets, params) {
+  await db.query(
+    `UPDATE jobs SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND tenant_id = ?`,
+    [...params, String(jobId), tenantId]
+  );
 }
 
 const setupQueueEvents = (queueName) => {
   const queueEvents = new QueueEvents(queueName, { connection });
 
   queueEvents.on('added', async ({ jobId, name }) => {
-    logger.info(`Queue event: job ${jobId} added to ${queueName}`);
     try {
-      const row = await loadJobRow(jobId);
+      const row = await loadTenantScopedJob(jobId);
       if (!row) return;
-      await updateJob(jobId, row.tenant_id, 'status = ?, type = ?', ['waiting', name]);
+      await updateTenantJob(jobId, row.tenant_id, 'status = ?, type = ?', ['waiting', name]);
     } catch (e) {
       logger.error('Failed to log job added', { jobId, message: e.message });
     }
   });
 
   queueEvents.on('active', async ({ jobId }) => {
-    logger.info(`Queue event: job ${jobId} active in ${queueName}`);
     try {
-      const row = await loadJobRow(jobId);
+      const row = await loadTenantScopedJob(jobId);
       if (!row) return;
-      await updateJob(jobId, row.tenant_id, 'status = ?, started_at = CURRENT_TIMESTAMP', ['active']);
+      await updateTenantJob(jobId, row.tenant_id, 'status = ?, started_at = CURRENT_TIMESTAMP', [
+        'active'
+      ]);
     } catch (e) {
       logger.error('Failed to log job active', { jobId, message: e.message });
     }
   });
 
   queueEvents.on('completed', async ({ jobId, returnvalue }) => {
-    logger.info(`Queue event: job ${jobId} completed in ${queueName}`);
     try {
-      const row = await loadJobRow(jobId);
+      const row = await loadTenantScopedJob(jobId);
       if (!row) return;
       const resultJson =
         returnvalue == null
@@ -70,7 +69,7 @@ const setupQueueEvents = (queueName) => {
           : typeof returnvalue === 'string'
             ? returnvalue
             : JSON.stringify(returnvalue);
-      await updateJob(
+      await updateTenantJob(
         jobId,
         row.tenant_id,
         'status = ?, completed_at = CURRENT_TIMESTAMP, result = ?, error_message = NULL, failed_at = NULL',
@@ -82,29 +81,27 @@ const setupQueueEvents = (queueName) => {
   });
 
   queueEvents.on('failed', async ({ jobId, failedReason }) => {
-    logger.error(`Queue event: job ${jobId} failed in ${queueName}: ${failedReason}`);
     try {
-      const row = await loadJobRow(jobId);
+      const row = await loadTenantScopedJob(jobId);
       if (!row) return;
 
       const maxAttempts = Number(row.max_attempts) || 3;
       const attempts = Number(row.attempts) || 0;
       const isFinal = attempts >= maxAttempts;
+      const reason = String(failedReason || 'failed').slice(0, 1000);
 
       if (isFinal) {
-        await updateJob(
+        await updateTenantJob(
           jobId,
           row.tenant_id,
           'status = ?, failed_at = CURRENT_TIMESTAMP, error_message = ?',
-          ['failed', String(failedReason || 'failed').slice(0, 1000)]
+          ['failed', reason]
         );
       } else {
-        await updateJob(
-          jobId,
-          row.tenant_id,
-          'status = ?, error_message = ?',
-          ['waiting', String(failedReason || 'failed').slice(0, 1000)]
-        );
+        await updateTenantJob(jobId, row.tenant_id, 'status = ?, error_message = ?', [
+          'waiting',
+          reason
+        ]);
       }
     } catch (e) {
       logger.error('Failed to log job failed', { jobId, message: e.message });
