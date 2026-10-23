@@ -12,9 +12,7 @@ describe('Auth Endpoints', () => {
   };
 
   it('should register a new user and create a tenant', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send(testUser);
+    const res = await request(app).post('/api/auth/register').send(testUser);
 
     expect(res.statusCode).toEqual(201);
     expect(res.body.success).toBe(true);
@@ -40,12 +38,10 @@ describe('Auth Endpoints', () => {
   it('should login an existing user', async () => {
     await request(app).post('/api/auth/register').send(testUser);
 
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: testUser.email,
-        password: testUser.password
-      });
+    const res = await request(app).post('/api/auth/login').send({
+      email: testUser.email,
+      password: testUser.password
+    });
 
     expect(res.statusCode).toEqual(200);
     expect(res.body.success).toBe(true);
@@ -55,12 +51,10 @@ describe('Auth Endpoints', () => {
   it('should not login with wrong password', async () => {
     await request(app).post('/api/auth/register').send(testUser);
 
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: testUser.email,
-        password: 'wrongpassword'
-      });
+    const res = await request(app).post('/api/auth/login').send({
+      email: testUser.email,
+      password: 'wrongpassword'
+    });
 
     expect(res.statusCode).toEqual(401);
     expect(res.body.success).toBe(false);
@@ -161,7 +155,5 @@ describe('Protected resources without token', () => {
   test.each(protectedPaths)('%s returns 401 when unauthenticated', async (path) => {
     const res = await request(app).get(path);
     expect(res.status).toBe(401);
-  });
-});
   });
 });

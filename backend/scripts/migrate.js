@@ -4,9 +4,9 @@ const db = require('../src/config/database');
 const logger = require('../src/utils/logger');
 
 /**
- * Split SQL into executable statements without breaking on semicolons inside
- * strings/comments. Does NOT support DELIMITER / stored procedures.
- * Migrations must use plain SQL that the DB driver can run statement-by-statement.
+ * Split SQL into executable statements.
+ * Line/block comments are discarded (not attached to the next statement).
+ * Does NOT support DELIMITER / stored procedures.
  */
 function splitStatements(sql) {
   const statements = [];
@@ -21,14 +21,14 @@ function splitStatements(sql) {
     const next = sql[i + 1];
 
     if (inLineComment) {
-      current += ch;
-      if (ch === '\n') inLineComment = false;
+      if (ch === '\n') {
+        inLineComment = false;
+        current += '\n';
+      }
       continue;
     }
     if (inBlockComment) {
-      current += ch;
       if (ch === '*' && next === '/') {
-        current += next;
         i++;
         inBlockComment = false;
       }
@@ -47,12 +47,12 @@ function splitStatements(sql) {
 
     if (ch === '-' && next === '-') {
       inLineComment = true;
-      current += ch;
+      i++;
       continue;
     }
     if (ch === '/' && next === '*') {
       inBlockComment = true;
-      current += ch;
+      i++;
       continue;
     }
     if (ch === "'") {
@@ -68,11 +68,7 @@ function splitStatements(sql) {
 
     if (ch === ';') {
       const trimmed = current.trim();
-      if (
-        trimmed.length > 0 &&
-        !trimmed.startsWith('--') &&
-        !trimmed.toUpperCase().startsWith('USE ')
-      ) {
+      if (trimmed.length > 0 && !trimmed.toUpperCase().startsWith('USE ')) {
         statements.push(trimmed);
       }
       current = '';
@@ -83,11 +79,7 @@ function splitStatements(sql) {
   }
 
   const trailing = current.trim();
-  if (
-    trailing.length > 0 &&
-    !trailing.startsWith('--') &&
-    !trailing.toUpperCase().startsWith('USE ')
-  ) {
+  if (trailing.length > 0 && !trailing.toUpperCase().startsWith('USE ')) {
     statements.push(trailing);
   }
 
@@ -166,16 +158,24 @@ async function runMigrations() {
           await db.query(statement);
         } catch (stmtError) {
           if (isIgnorableError(stmtError.message)) {
-            logger.warn(`Migration ${file} statement ${i + 1} skipped (already applied): ${stmtError.message}`);
+            logger.warn(
+              `Migration ${file} statement ${i + 1} skipped (already applied): ${stmtError.message}`
+            );
           } else {
-            failures.push({ index: i + 1, message: stmtError.message, preview: statement.slice(0, 120) });
+            failures.push({
+              index: i + 1,
+              message: stmtError.message,
+              preview: statement.slice(0, 120)
+            });
           }
         }
       }
 
       if (failures.length > 0) {
         for (const f of failures) {
-          logger.error(`Migration ${file} failed at statement ${f.index}: ${f.message} | ${f.preview}`);
+          logger.error(
+            `Migration ${file} failed at statement ${f.index}: ${f.message} | ${f.preview}`
+          );
         }
         throw new Error(
           `Migration ${file} failed (${failures.length} statement error(s)). Not recorded as applied.`
@@ -193,10 +193,11 @@ async function runMigrations() {
   }
 }
 
+module.exports = runMigrations;
+module.exports.splitStatements = splitStatements;
+
 if (require.main === module) {
   runMigrations().then(() => {
     process.exit(0);
   });
 }
-
-module.exports = runMigrations;

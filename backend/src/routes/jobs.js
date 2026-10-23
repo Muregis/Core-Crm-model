@@ -1,5 +1,5 @@
 const express = require('express');
-const { protect, authorize } = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 const db = require('../config/database');
 const { emailQueue, reportQueue, importQueue } = require('../queue/queues');
 
@@ -10,14 +10,18 @@ const queues = { email: emailQueue, report: reportQueue, import: importQueue };
 
 function parseResult(value) {
   if (typeof value !== 'string') return value;
-  try { return JSON.parse(value); } catch (_) { return value; }
+  try {
+    return JSON.parse(value);
+  } catch (_) {
+    return value;
+  }
 }
 
 async function findOwnedJob(jobId, tenantId) {
-  const rows = await db.query(
-    'SELECT * FROM jobs WHERE job_id = ? AND tenant_id = ?',
-    [String(jobId), tenantId]
-  );
+  const rows = await db.query('SELECT * FROM jobs WHERE job_id = ? AND tenant_id = ?', [
+    String(jobId),
+    tenantId
+  ]);
   return rows && rows.length ? rows[0] : null;
 }
 
@@ -53,22 +57,7 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// Platform-wide worker inventory. Role is tenant admin today; restrict further
-// when a true platform-operator role is introduced.
-router.get('/workers/active', authorize('admin'), async (req, res) => {
-  try {
-    const activeWorkers = [];
-    for (const [name, queue] of Object.entries(queues)) {
-      if (typeof queue.getWorkers === 'function') {
-        const workers = await queue.getWorkers();
-        activeWorkers.push(...workers.map((worker) => ({ queue: name, ...worker })));
-      }
-    }
-    res.json({ success: true, data: activeWorkers });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to fetch workers' });
-  }
-});
+// Platform-wide worker inventory is intentionally NOT exposed on the tenant API.
 
 router.get('/:id/result', async (req, res) => {
   try {
@@ -92,16 +81,26 @@ router.get('/:id', async (req, res) => {
     const row = await findOwnedJob(req.params.id, req.user.tenant_id);
     if (!row) return res.status(404).json({ success: false, message: 'Job not found' });
 
-    const queueName = row.type === 'report' || row.type === 'generate_sales_report' ? 'report' : row.type;
+    const queueName =
+      row.type === 'report' || row.type === 'generate_sales_report' ? 'report' : row.type;
     const queue = queues[queueName];
     let queueState = null;
     let attemptsMade = Number(row.attempts) || 0;
 
-    if (queue) {
-      const bullJob = await queue.getJob(String(row.job_id));
-      if (bullJob) {
-        queueState = await bullJob.getState();
-        attemptsMade = bullJob.attemptsMade;
+    // Queue lookup is optional enrichment. Audit-table status is authoritative.
+    if (queue && typeof queue.getJob === 'function') {
+      try {
+        const bullJob = await queue.getJob(String(row.job_id));
+        if (bullJob) {
+          if (typeof bullJob.getState === 'function') {
+            queueState = await bullJob.getState();
+          }
+          if (bullJob.attemptsMade != null) {
+            attemptsMade = bullJob.attemptsMade;
+          }
+        }
+      } catch (_) {
+        // Redis/mock unavailable — still return the tenant-owned audit row
       }
     }
 
@@ -137,12 +136,18 @@ router.post('/:type/:id/retry', async (req, res) => {
 
     const queueName = req.params.type;
     const queue = queues[queueName];
-    if (!queue || (row.type !== queueName && !(queueName === 'report' && row.type === 'generate_sales_report'))) {
+    if (
+      !queue ||
+      (row.type !== queueName &&
+        !(queueName === 'report' && row.type === 'generate_sales_report'))
+    ) {
       return res.status(400).json({ success: false, message: 'Queue type does not match this job' });
     }
 
     const job = await queue.getJob(String(row.job_id));
-    if (!job) return res.status(404).json({ success: false, message: 'Job is no longer available to retry' });
+    if (!job || typeof job.retry !== 'function') {
+      return res.status(404).json({ success: false, message: 'Job is no longer available to retry' });
+    }
 
     await job.retry();
     await db.query(

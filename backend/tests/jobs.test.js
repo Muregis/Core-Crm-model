@@ -1,94 +1,97 @@
 const request = require('supertest');
 const app = require('../server');
 const { processReport } = require('../workers/report.worker');
-const db = require('../src/config/database');
 
 describe('BullMQ Queue Workflow & Jobs Endpoints', () => {
   let tenant1Token;
   let tenant2Token;
 
   beforeEach(async () => {
-    // 1. Tenant 1 Admin
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const res1 = await request(app).post('/api/auth/register').send({
-      email: 'queueadmin1@tenant1.com',
+      email: `queueadmin1-${suffix}@tenant1.com`,
       password: 'password123',
       firstName: 'Queue',
       lastName: 'One',
-      phone: '+254711888881',
+      phone: `+254711${String(Date.now()).slice(-6)}`,
       role: 'admin',
-      tenantName: 'Tenant One'
+      tenantName: `Tenant One ${suffix}`
     });
+    expect(res1.statusCode).toBeLessThan(300);
     tenant1Token = res1.body.data.token;
 
-    // 2. Tenant 2 Admin
     const res2 = await request(app).post('/api/auth/register').send({
-      email: 'queueadmin2@tenant2.com',
+      email: `queueadmin2-${suffix}@tenant2.com`,
       password: 'password123',
       firstName: 'Queue',
       lastName: 'Two',
-      phone: '+254722888882',
+      phone: `+254722${String(Date.now()).slice(-6)}`,
       role: 'admin',
-      tenantName: 'Tenant Two'
+      tenantName: `Tenant Two ${suffix}`
     });
+    expect(res2.statusCode).toBeLessThan(300);
     tenant2Token = res2.body.data.token;
   });
 
   describe('Asynchronous Job Dispatch & Idempotency', () => {
     it('should enqueue a sales report job and return 202 Accepted', async () => {
       const res = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
         .send({
+          reportType: 'sales',
           filters: { year: 2026 },
           idempotencyKey: 'idemp-key-1001'
         });
 
       expect(res.statusCode).toEqual(202);
       expect(res.body.success).toBe(true);
-      expect(res.body.jobId).toBe('idemp-key-1001');
+      expect(res.body.data.jobId).toMatch(/tenant-\d+-idemp-key-1001/);
     });
 
     it('should be idempotent when enqueuing with identical idempotencyKey', async () => {
+      const key = `idemp-dup-${Date.now()}`;
       const res1 = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
-        .send({ idempotencyKey: 'idemp-duplicate-test' });
+        .send({ reportType: 'sales', idempotencyKey: key });
 
       const res2 = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
-        .send({ idempotencyKey: 'idemp-duplicate-test' });
+        .send({ reportType: 'sales', idempotencyKey: key });
 
-      expect(res1.body.jobId).toEqual(res2.body.jobId);
+      expect(res1.statusCode).toEqual(202);
+      expect(res2.statusCode).toEqual(202);
+      expect(res1.body.data.jobId).toEqual(res2.body.data.jobId);
     });
   });
 
   describe('Worker Processing & Result Persistence', () => {
     it('worker should process sales report job, persist results, and retrieve status via API', async () => {
-      // 1. Enqueue job
       const enqueueRes = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
-        .send({ idempotencyKey: 'job-process-e2e' });
+        .send({ reportType: 'sales', idempotencyKey: `job-process-e2e-${Date.now()}` });
 
-      const jobId = enqueueRes.body.jobId;
+      expect(enqueueRes.statusCode).toEqual(202);
+      const jobId = enqueueRes.body.data.jobId;
 
-      // 2. Execute worker processor
-      const fakeJob = {
+      const tenantMatch = String(jobId).match(/^tenant-(\d+)-/);
+      const tenantId = tenantMatch ? Number(tenantMatch[1]) : 1;
+
+      const result = await processReport({
         id: jobId,
-        data: {
-          reportType: 'sales',
-          filters: {},
-          tenantId: 1
-        }
-      };
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+        data: { reportType: 'sales', filters: {}, tenantId }
+      });
 
-      const result = await processReport(fakeJob);
       expect(result).toBeDefined();
       expect(result.totalDeals).toBeDefined();
-      expect(result.revenue).toBeDefined();
+      expect(result.revenueKes).toBeDefined();
+      expect(result.tenantId).toBe(tenantId);
 
-      // 3. Status API retrieval (GET /api/jobs/:id)
       const statusRes = await request(app)
         .get(`/api/jobs/${jobId}`)
         .set('Authorization', `Bearer ${tenant1Token}`);
@@ -101,26 +104,26 @@ describe('BullMQ Queue Workflow & Jobs Endpoints', () => {
     });
 
     it('worker should throw error on unknown report type', async () => {
-      const badJob = {
-        id: 'bad-job-id',
-        data: {
-          reportType: 'unsupported_type',
-          tenantId: 1
-        }
-      };
-
-      await expect(processReport(badJob)).rejects.toThrow('Unknown report type: unsupported_type');
+      await expect(
+        processReport({
+          id: 'bad-job-id',
+          attemptsMade: 0,
+          opts: { attempts: 3 },
+          data: { reportType: 'unsupported_type', tenantId: 1 }
+        })
+      ).rejects.toThrow(/Unsupported report type/i);
     });
   });
 
   describe('Job Tenant Isolation', () => {
     it('Tenant 2 should NOT retrieve Tenant 1 job details (404 Not Found)', async () => {
       const enqueueRes = await request(app)
-        .post('/api/analytics/sales-report')
+        .post('/api/reports')
         .set('Authorization', `Bearer ${tenant1Token}`)
-        .send({ idempotencyKey: 'job-tenant-isolation-test' });
+        .send({ reportType: 'sales', idempotencyKey: `job-tenant-isolation-${Date.now()}` });
 
-      const jobId = enqueueRes.body.jobId;
+      expect(enqueueRes.statusCode).toEqual(202);
+      const jobId = enqueueRes.body.data.jobId;
 
       const res = await request(app)
         .get(`/api/jobs/${jobId}`)
