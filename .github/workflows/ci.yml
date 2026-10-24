@@ -58,7 +58,7 @@ jobs:
           node --check src/middleware/auth.js
 
       - name: Run test suite
-        run: npm test -- --passWithNoTests --maxWorkers=2
+        run: npm test -- --maxWorkers=2
         env:
           NODE_ENV: test
           JWT_SECRET: test_jwt_secret_key_1234567890
