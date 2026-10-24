@@ -563,6 +563,246 @@ POST /uploads
 }
 ```
 
+## Land Parcels & Estate Inventory Endpoints
+
+### Get Plot Matrix Overview
+```http
+GET /parcels/matrix/overview
+```
+Returns project grouped estate plots with status counts (available, reserved, sold) and active countdown timers.
+
+### Place Timed Reservation Hold (LOO)
+```http
+POST /parcels/:id/hold
+```
+**Request Body:**
+```json
+{
+  "customerId": 1,
+  "holdHours": 48,
+  "letterOfOfferRef": "LOO-PLOT-45-2026",
+  "depositRequiredKes": 150000,
+  "notes": "48h reservation pending 10% commitment deposit"
+}
+```
+
+### Release Timed Hold
+```http
+POST /parcels/:id/release-hold
+```
+Releases parcel back to Available (Green) and cancels active hold timer.
+
+### Convert Parcel Sale
+```http
+POST /parcels/:id/convert-sale
+```
+Marks parcel as Sold (Red) and finalizes title conveyance.
+
+### Get Lipa Mdogo Mdogo Installments
+```http
+GET /parcels/installments/list
+```
+Returns tenant milestone installments, collection totals, and outstanding balances.
+
+### Generate Lipa Mdogo Mdogo Schedule
+```http
+POST /parcels/installments/plan
+```
+**Request Body:**
+```json
+{
+  "dealId": 1,
+  "parcelId": 5,
+  "customerId": 2,
+  "totalAmountKes": 1500000,
+  "startDate": "2026-10-24"
+}
+```
+Generates 4 Kenyan land milestones: 10% Deposit (7d), 30% Beaconing (30d), 30% LCB (60d), and 30% Title Handover (90d).
+
+### Auto-Match M-Pesa to Installment Milestone
+```http
+POST /parcels/installments/:id/match-mpesa
+```
+**Request Body:**
+```json
+{
+  "mpesaReceiptNumber": "QK87XP492L",
+  "amountPaidKes": 150000
+}
+```
+
+### Get Saturday Site Visit Convoys
+```http
+GET /parcels/site-visits/list
+```
+Returns scheduled Saturday convoys, available seat quotas, and passenger manifests.
+
+### Schedule Saturday Convoy
+```http
+POST /parcels/site-visits
+```
+**Request Body:**
+```json
+{
+  "projectName": "Juja Ridge Phase 2",
+  "destinationCounty": "Kiambu",
+  "visitDate": "2026-10-31",
+  "departureTime": "08:30 AM",
+  "departureLocation": "Kencom House, Nairobi CBD",
+  "vehicleType": "33-Seater Executive Shuttle",
+  "totalSeats": 33,
+  "driverPhone": "+254711000111",
+  "notes": "Saturday investor site visit convoy"
+}
+```
+
+### Book Passenger Convoy Seat
+```http
+POST /parcels/site-visits/:id/book
+```
+**Request Body:**
+```json
+{
+  "customerId": 3,
+  "visitorName": "Mary Wanjiku",
+  "visitorPhone": "+254712345678",
+  "seatsBooked": 2,
+  "pickupPoint": "Kencom House, CBD",
+  "notes": "VIP Investor booking"
+}
+```
+
+---
+
+## Commercial Core, Invoicing & Products Endpoints
+
+### Get Invoices & Quotations
+```http
+GET /invoices
+```
+Query params: `status`, `type` (invoice | quote), `page`, `limit`.
+
+### Create KRA eTIMS Tax Invoice
+```http
+POST /invoices
+```
+**Request Body:**
+```json
+{
+  "customerId": 1,
+  "type": "invoice",
+  "issueDate": "2026-10-24",
+  "dueDate": "2026-11-24",
+  "applyVat": true,
+  "items": [
+    {
+      "description": "5,000L Heavy Duty Roto Water Tank",
+      "sku": "ROTO-5000L",
+      "quantity": 2,
+      "unitPriceKes": 45000
+    }
+  ]
+}
+```
+Computes 16% VAT automatically and attaches a KRA eTIMS CU Fiscal Number.
+
+### Convert Quote to Tax Invoice
+```http
+POST /invoices/:id/convert-to-invoice
+```
+Instantly converts quotation (`QT-2026-XXXX`) into official tax invoice (`INV-2026-XXXX`).
+
+### Products & Services Catalog
+```http
+GET /invoices/products/list
+POST /invoices/products
+```
+
+### Debtor Aging Analysis
+```http
+GET /invoices/aging/analysis
+```
+Returns 4 aging receivables buckets: Current (0–30d), 31–60d, 61–90d, and 90+d critical.
+
+---
+
+## ArdhiSasa Land Conveyancing Endpoints
+
+### List Conveyancing Matters
+```http
+GET /conveyancing
+```
+Returns statutory conveyance cases and stage counts.
+
+### Initiate Conveyancing File
+```http
+POST /conveyancing
+```
+**Request Body:**
+```json
+{
+  "parcelId": 1,
+  "customerId": 2,
+  "dealId": 3,
+  "stage": "search_due_diligence",
+  "searchRef": "ARDHI-SRCH-2026-8921",
+  "notes": "NLIMS green card search initiated"
+}
+```
+
+### Advance Conveyancing Milestone
+```http
+PUT /conveyancing/:id/stage
+```
+**Request Body:**
+```json
+{
+  "stage": "lcb_consent",
+  "lcbBoardName": "Kajiado North Land Control Board",
+  "notes": "Board hearing scheduled for 15th next month"
+}
+```
+
+---
+
+## Executive Analytics & OPEX Endpoints
+
+### P&L Financial Scorecard
+```http
+GET /analytics/pnl
+```
+Returns Gross Inflows, Total OPEX, Net Profit, Operating Margin %, and Overall ROI Multiplier.
+
+### Staff Productivity & Appraisal Matrix
+```http
+GET /analytics/staff-productivity
+```
+Ranks team members by Net Contribution and Productivity ROI Multiplier ($\text{Revenue} / \text{Cost}$) with recommended action tags (Bonus vs Layoffs).
+
+### Operating Expenditure (OPEX) Ledger
+```http
+GET /expenditures
+POST /expenditures
+```
+Record and list operational expenses categorized by payroll, commissions, fuel, legal fees, and marketing.
+
+---
+
+## Legal Matters Endpoints
+
+### List Legal Matters
+```http
+GET /matters
+```
+
+### Log Billable Time Entry
+```http
+POST /matters/:id/time-entries
+```
+
+---
+
 ## Error Codes
 
 | Status Code | Description |

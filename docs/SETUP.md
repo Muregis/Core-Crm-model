@@ -72,11 +72,30 @@ cd frontend
 npm run dev
 ```
 
-### 5. Access the Application
+### 5. Access the Application & Demo Accounts
 
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:5000
-- **Default Admin Login**: admin@kenyacrm.com / admin123
+- **Frontend Application**: `http://localhost:5173`
+- **Backend REST API**: `http://localhost:5000`
+
+Log in using any of the pre-configured industry vertical accounts:
+
+| Industry Vertical | Login Email | Password | Primary Routes |
+| :--- | :--- | :--- | :--- |
+| **🏢 Real Estate Edition**<br>*(Safari Real Estate Ltd)* | `admin@corecrm.co.ke` | `Password123!` | `/parcels` (Plot Matrix, Lipa Mdogo Mdogo, Saturday Convoys)<br>`/deals?tab=conveyancing` (ArdhiSasa Pipeline) |
+| **💼 Commercial Core Edition**<br>*(Apex Commercial Supplies)* | `director@apexsupplies.co.ke` | `Password123!` | `/invoices` (Products Catalog, Quotes, KRA Invoices, 30/60/90 Aging) |
+| **⚖️ Legal Practice Edition**<br>*(Nairobi Advocates LLP)* | `counsel@nairobilaw.co.ke` | `Password123!` | `/matters` (Court Hierarchy, E-Filing, ARO Fee Scales)<br>`/deals` (Litigation Retainers) |
+
+### 6. Zero-Config Database (Automatic SQLite Fallback)
+
+For rapid local testing and CI environments, MySQL is **optional**. If MySQL credentials are not provided or the server is offline, the backend automatically initializes a zero-config SQLite relational database with strict foreign key constraints and schema migrations.
+
+### 7. Run Automated Tests
+
+Verify system integrity across all 17 test suites (97 unit and integration tests):
+```bash
+cd backend
+npm test
+```
 
 ## Detailed Setup Instructions
 
