@@ -2,7 +2,7 @@
 // Visual sales pipeline / Kanban board, stage probability tracking, revenue forecasting, and deal creation tailored by profession.
 // Plus ArdhiSasa & Land Conveyancing Pipeline for Real Estate (Search -> Beacon -> LCB -> Stamp Duty -> Title Deed).
 import React, { useEffect, useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Briefcase,
   Plus,
@@ -117,7 +117,18 @@ const Deals = () => {
 
   const defaultStagesForIndustry = STAGES_BY_INDUSTRY[industry] || STAGES_BY_INDUSTRY.general
 
-  const [activeSubTab, setActiveSubTab] = useState('deals') // 'deals' | 'conveyancing'
+  const [searchParams] = useSearchParams()
+  const initialSubTab = searchParams.get('tab') === 'conveyancing' ? 'conveyancing' : 'deals'
+  const [activeSubTab, setActiveSubTab] = useState(initialSubTab)
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam === 'conveyancing') {
+      setActiveSubTab('conveyancing')
+    } else if (tabParam === 'deals') {
+      setActiveSubTab('deals')
+    }
+  }, [searchParams])
   const [deals, setDeals] = useState([])
   const [stages, setStages] = useState(defaultStagesForIndustry)
   const [customers, setCustomers] = useState([])

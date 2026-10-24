@@ -32,3 +32,6 @@ export const formatDateKe = (dateInput) => {
   }).format(date)
 }
 
+export const formatDateKE = formatDateKe
+
+

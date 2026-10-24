@@ -11,4 +11,10 @@ export const parcelService = {
   reserveHold: (id, data) => api.post(`/parcels/${id}/hold`, data),
   releaseHold: (id) => api.post(`/parcels/${id}/release-hold`),
   convertSale: (id, data) => api.post(`/parcels/${id}/convert-sale`, data),
+  getInstallments: (params) => api.get('/parcels/installments/list', { params }),
+  createInstallmentPlan: (data) => api.post('/parcels/installments/plan', data),
+  matchInstallmentMpesa: (id, data) => api.post(`/parcels/installments/${id}/match-mpesa`, data),
+  getSiteVisits: () => api.get('/parcels/site-visits/list'),
+  createSiteVisit: (data) => api.post('/parcels/site-visits', data),
+  bookSiteVisitPassenger: (id, data) => api.post(`/parcels/site-visits/${id}/book`, data),
 }

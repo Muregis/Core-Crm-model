@@ -10,7 +10,13 @@ const {
   getPlotMatrix,
   reserveParcelWithHold,
   releaseParcelHold,
-  convertHoldToSale
+  convertHoldToSale,
+  getInstallments,
+  createInstallmentPlan,
+  matchInstallmentMpesa,
+  getSiteVisits,
+  createSiteVisit,
+  bookSiteVisitPassenger
 } = require('../controllers/parcelController');
 
 const router = express.Router();
@@ -29,6 +35,15 @@ const createValidation = [
   body('ownerCustomerId').optional({ nullable: true }).isInt({ min: 1 })
 ];
 
+// Lipa Mdogo Mdogo Installment endpoints
+router.get('/installments/list', getInstallments);
+router.post('/installments/plan', createInstallmentPlan);
+router.post('/installments/:id/match-mpesa', matchInstallmentMpesa);
+
+// Saturday Site Visit Convoy Booking endpoints
+router.get('/site-visits/list', getSiteVisits);
+router.post('/site-visits', createSiteVisit);
+router.post('/site-visits/:id/book', bookSiteVisitPassenger);
 
 // Plot Matrix endpoints
 router.get('/matrix/overview', getPlotMatrix);

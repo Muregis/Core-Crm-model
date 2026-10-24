@@ -342,9 +342,55 @@ const createInvoice = async (req, res) => {
   }
 };
 
+// @desc    Convert Quotation to Official Tax Invoice
+// @route   POST /api/invoices/:id/convert-to-invoice
+// @access  Private
+const convertQuoteToInvoice = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const id = req.params.id;
+
+    const existing = await db.query(
+      'SELECT * FROM invoices WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: 'Quotation not found' });
+    }
+
+    const countRes = await db.query(
+      'SELECT COUNT(*) as cnt FROM invoices WHERE tenant_id = ? AND invoice_type = "invoice"',
+      [tenantId]
+    );
+    const seq = (countRes[0]?.cnt || 0) + 1;
+    const invoiceNumber = `INV-${new Date().getFullYear()}-${String(seq).padStart(4, '0')}`;
+    const etimsCuNumber = `KRA-ETIMS-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+
+    await db.query(
+      `UPDATE invoices 
+       SET invoice_type = 'invoice', invoice_number = ?, etims_cu_number = ?, status = 'sent', updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND tenant_id = ?`,
+      [invoiceNumber, etimsCuNumber, id, tenantId]
+    );
+
+    const updated = await db.query('SELECT * FROM invoices WHERE id = ?', [id]);
+
+    res.json({
+      success: true,
+      message: `Quotation converted to Tax Invoice ${invoiceNumber}`,
+      data: { invoice: updated[0] }
+    });
+  } catch (error) {
+    logger.error('Convert quotation error:', error);
+    res.status(500).json({ success: false, message: 'Server error while converting quotation' });
+  }
+};
+
 module.exports = {
   getInvoices,
   getInvoice,
   getDebtorAging,
-  createInvoice
+  createInvoice,
+  convertQuoteToInvoice
 };

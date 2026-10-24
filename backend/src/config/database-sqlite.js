@@ -73,6 +73,8 @@ class Database {
       this.createInvoicesTable();
       this.createInvoiceItemsTable();
       this.createExpendituresTable();
+      this.createSiteVisitsTable();
+      this.createSiteVisitBookingsTable();
 
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN invoice_id INTEGER", () => {});
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN installment_id INTEGER", () => {});
@@ -836,6 +838,58 @@ class Database {
     this.db.run('CREATE INDEX IF NOT EXISTS idx_expenditures_user ON expenditures(assigned_user_id)');
   }
 
+  createSiteVisitsTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS site_visits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        project_name TEXT NOT NULL,
+        destination_county TEXT DEFAULT 'Kiambu',
+        visit_date TEXT NOT NULL,
+        departure_time TEXT DEFAULT '09:00 AM',
+        departure_location TEXT DEFAULT 'Kencom House, Nairobi CBD',
+        vehicle_type TEXT DEFAULT '33-Seater Executive Shuttle',
+        total_seats INTEGER DEFAULT 33,
+        booked_seats INTEGER DEFAULT 0,
+        lead_marshal_id INTEGER,
+        driver_name TEXT DEFAULT 'Mwangi Driver',
+        driver_phone TEXT DEFAULT '+254711000999',
+        status TEXT DEFAULT 'scheduled',
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (lead_marshal_id) REFERENCES users(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_site_visits_tenant ON site_visits(tenant_id, visit_date)');
+  }
+
+  createSiteVisitBookingsTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS site_visit_bookings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        site_visit_id INTEGER NOT NULL,
+        customer_id INTEGER,
+        visitor_name TEXT NOT NULL,
+        visitor_phone TEXT NOT NULL,
+        seats_booked INTEGER DEFAULT 1,
+        pickup_point TEXT DEFAULT 'Kencom House, CBD',
+        assigned_agent_id INTEGER,
+        status TEXT DEFAULT 'confirmed',
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (site_visit_id) REFERENCES site_visits(id) ON DELETE CASCADE,
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (assigned_agent_id) REFERENCES users(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_site_bookings_visit ON site_visit_bookings(site_visit_id)');
+  }
+
   forTenant(tenantId) {
     if (!tenantId) {
       throw new Error('Tenant safety violation: tenantId is required for scoped database operations');
@@ -847,7 +901,7 @@ class Database {
         const tenantTables = [
           'CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS',
           'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS', 'PARCELS', 'PARCEL_STATUS_HISTORY',
-          'MATTERS', 'MATTER_TIME_ENTRIES', 'PARCEL_RESERVATIONS', 'DEAL_INSTALLMENTS', 'CONVEYANCING_MATTERS', 'PRODUCTS', 'INVOICES', 'INVOICE_ITEMS', 'EXPENDITURES'
+          'MATTERS', 'MATTER_TIME_ENTRIES', 'PARCEL_RESERVATIONS', 'DEAL_INSTALLMENTS', 'CONVEYANCING_MATTERS', 'PRODUCTS', 'INVOICES', 'INVOICE_ITEMS', 'EXPENDITURES', 'SITE_VISITS', 'SITE_VISIT_BOOKINGS'
         ];
         const touchesTenantTable = tenantTables.some((t) => upper.includes(t));
         if (touchesTenantTable && !upper.includes('TENANT_ID')) {

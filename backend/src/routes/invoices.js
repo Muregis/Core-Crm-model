@@ -4,7 +4,8 @@ const {
   getInvoices,
   getInvoice,
   getDebtorAging,
-  createInvoice
+  createInvoice,
+  convertQuoteToInvoice
 } = require('../controllers/invoiceController');
 
 const router = express.Router();
@@ -16,6 +17,7 @@ router.route('/')
   .post(createInvoice);
 
 router.get('/aging/report', getDebtorAging);
+router.post('/:id/convert-to-invoice', convertQuoteToInvoice);
 
 router.route('/:id')
   .get(getInvoice);

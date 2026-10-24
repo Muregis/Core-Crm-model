@@ -744,11 +744,381 @@ const convertHoldToSale = async (req, res) => {
   }
 };
 
+
+// ==========================================
+// LIPA MDOGO MDOGO - INSTALLMENT PLANS
+// ==========================================
+
+// @desc    Get all installments / Lipa Mdogo Mdogo tracking
+// @route   GET /api/parcels/installments/list
+// @access  Private
+const getInstallments = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const { dealId, customerId, status } = req.query;
+
+    let where = 'WHERE di.tenant_id = ?';
+    const params = [tenantId];
+
+    if (dealId) {
+      where += ' AND di.deal_id = ?';
+      params.push(dealId);
+    }
+    if (customerId) {
+      where += ' AND di.customer_id = ?';
+      params.push(customerId);
+    }
+    if (status) {
+      where += ' AND di.status = ?';
+      params.push(status);
+    }
+
+    const rows = await db.query(
+      `SELECT di.*,
+              c.first_name AS customer_first_name,
+              c.last_name AS customer_last_name,
+              c.phone AS customer_phone,
+              p.plot_number,
+              p.project_name,
+              p.title_ref,
+              d.title AS deal_title
+       FROM deal_installments di
+       LEFT JOIN customers c ON di.customer_id = c.id
+       LEFT JOIN parcels p ON di.parcel_id = p.id
+       LEFT JOIN deals d ON di.deal_id = d.id
+       ${where}
+       ORDER BY di.due_date ASC, di.installment_number ASC`,
+      params
+    );
+
+    let totalKes = 0;
+    let paidKes = 0;
+    let pendingKes = 0;
+
+    for (const r of rows) {
+      totalKes += (parseFloat(r.amount_kes) || 0);
+      paidKes += (parseFloat(r.paid_amount_kes) || 0);
+      if (r.status !== 'paid') {
+        pendingKes += ((parseFloat(r.amount_kes) || 0) - (parseFloat(r.paid_amount_kes) || 0));
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          totalPlanAmountKes: totalKes,
+          totalCollectedKes: paidKes,
+          totalOutstandingKes: pendingKes,
+          collectionRate: totalKes > 0 ? Math.round((paidKes / totalKes) * 100) : 0,
+          totalMilestones: rows.length
+        },
+        installments: rows
+      }
+    });
+  } catch (error) {
+    logger.error('Get installments error:', error);
+    res.status(500).json({ success: false, message: 'Server error while fetching installments' });
+  }
+};
+
+// @desc    Create Lipa Mdogo Mdogo milestone schedule for a plot deal
+// @route   POST /api/parcels/installments/plan
+// @access  Private
+const createInstallmentPlan = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const { dealId, parcelId, customerId, totalAmountKes, startDate } = req.body;
+
+    if (!dealId || !customerId || !totalAmountKes) {
+      return res.status(400).json({
+        success: false,
+        message: 'dealId, customerId, and totalAmountKes are required'
+      });
+    }
+
+    const baseAmount = parseFloat(totalAmountKes);
+    const start = startDate ? new Date(startDate) : new Date();
+
+    const milestones = [
+      { num: 1, title: '10% Commitment Deposit & Offer Letter', pct: 0.10, days: 7 },
+      { num: 2, title: '30% Beaconing & Survey Mutation Sign-off', pct: 0.30, days: 30 },
+      { num: 3, title: '30% Land Control Board (LCB) Statutory Consent', pct: 0.30, days: 60 },
+      { num: 4, title: '30% Final Settlement & Title Deed Transfer', pct: 0.30, days: 90 }
+    ];
+
+    const createdRows = [];
+    for (const m of milestones) {
+      const milestoneDueDate = new Date(start.getTime() + m.days * 86400000).toISOString().split('T')[0];
+      const milestoneAmount = Math.round(baseAmount * m.pct);
+
+      const insRes = await db.run(
+        `INSERT INTO deal_installments (
+          tenant_id, deal_id, parcel_id, customer_id, installment_number,
+          title, due_date, amount_kes, paid_amount_kes, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending')`,
+        [
+          tenantId,
+          dealId,
+          parcelId || null,
+          customerId,
+          m.num,
+          m.title,
+          milestoneDueDate,
+          milestoneAmount
+        ]
+      );
+      createdRows.push({
+        id: insRes.id,
+        installmentNumber: m.num,
+        title: m.title,
+        dueDate: milestoneDueDate,
+        amountKes: milestoneAmount
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Lipa Mdogo Mdogo installment plan generated successfully',
+      data: { installments: createdRows }
+    });
+  } catch (error) {
+    logger.error('Create installment plan error:', error);
+    res.status(500).json({ success: false, message: 'Server error while generating installment plan' });
+  }
+};
+
+// @desc    Auto-match M-Pesa transaction code against an installment milestone
+// @route   POST /api/parcels/installments/:id/match-mpesa
+// @access  Private
+const matchInstallmentMpesa = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const id = req.params.id;
+    const { mpesaReceiptNumber, amountPaidKes } = req.body;
+
+    if (!mpesaReceiptNumber) {
+      return res.status(400).json({ success: false, message: 'mpesaReceiptNumber is required' });
+    }
+
+    const rows = await db.query(
+      'SELECT * FROM deal_installments WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Installment milestone not found' });
+    }
+
+    const inst = rows[0];
+    const paidVal = amountPaidKes ? parseFloat(amountPaidKes) : inst.amount_kes;
+    const isFullyPaid = paidVal >= inst.amount_kes;
+
+    await db.query(
+      `UPDATE deal_installments SET
+         paid_amount_kes = ?,
+         mpesa_receipt_number = ?,
+         status = ?,
+         paid_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND tenant_id = ?`,
+      [paidVal, mpesaReceiptNumber.toUpperCase(), isFullyPaid ? 'paid' : 'partial', id, tenantId]
+    );
+
+    res.json({
+      success: true,
+      message: `M-Pesa ${mpesaReceiptNumber.toUpperCase()} matched to milestone. Status: ${isFullyPaid ? 'PAID' : 'PARTIAL'}`
+    });
+  } catch (error) {
+    logger.error('Match installment error:', error);
+    res.status(500).json({ success: false, message: 'Server error while matching installment' });
+  }
+};
+
+// ==========================================
+// SATURDAY SITE VISIT CONVOY BOOKING SYSTEM
+// ==========================================
+
+// @desc    Get all scheduled Saturday convoys and booking manifests
+// @route   GET /api/parcels/site-visits/list
+// @access  Private
+const getSiteVisits = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+
+    const visits = await db.query(
+      `SELECT sv.*,
+              u.first_name AS marshal_first_name,
+              u.last_name AS marshal_last_name,
+              (SELECT COALESCE(SUM(seats_booked), 0) FROM site_visit_bookings b WHERE b.site_visit_id = sv.id AND b.status != 'cancelled') AS total_booked_passengers
+       FROM site_visits sv
+       LEFT JOIN users u ON sv.lead_marshal_id = u.id
+       WHERE sv.tenant_id = ?
+       ORDER BY sv.visit_date ASC, sv.id DESC`,
+      [tenantId]
+    );
+
+    const result = [];
+    for (const v of visits) {
+      const bookings = await db.query(
+        `SELECT b.*,
+                c.email AS customer_email,
+                u.first_name AS agent_first_name,
+                u.last_name AS agent_last_name
+         FROM site_visit_bookings b
+         LEFT JOIN customers c ON b.customer_id = c.id
+         LEFT JOIN users u ON b.assigned_agent_id = u.id
+         WHERE b.site_visit_id = ? AND b.tenant_id = ?
+         ORDER BY b.created_at ASC`,
+        [v.id, tenantId]
+      );
+
+      result.push({
+        ...v,
+        availableSeats: Math.max(0, (v.total_seats || 33) - (v.total_booked_passengers || 0)),
+        passengerManifest: bookings
+      });
+    }
+
+    res.json({ success: true, data: { siteVisits: result } });
+  } catch (error) {
+    logger.error('Get site visits error:', error);
+    res.status(500).json({ success: false, message: 'Server error while fetching site visits' });
+  }
+};
+
+// @desc    Schedule a new Saturday Convoy
+// @route   POST /api/parcels/site-visits
+// @access  Private
+const createSiteVisit = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const {
+      projectName,
+      destinationCounty = 'Kiambu',
+      visitDate,
+      departureTime = '09:00 AM',
+      departureLocation = 'Kencom House, Nairobi CBD',
+      vehicleType = '33-Seater Executive Shuttle',
+      totalSeats = 33,
+      leadMarshalId,
+      driverName = 'Mwangi Driver',
+      driverPhone = '+254711000999',
+      notes
+    } = req.body;
+
+    if (!projectName || !visitDate) {
+      return res.status(400).json({ success: false, message: 'projectName and visitDate are required' });
+    }
+
+    const insertRes = await db.run(
+      `INSERT INTO site_visits (
+        tenant_id, project_name, destination_county, visit_date, departure_time,
+        departure_location, vehicle_type, total_seats, booked_seats, lead_marshal_id,
+        driver_name, driver_phone, status, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'scheduled', ?)`,
+      [
+        tenantId,
+        projectName,
+        destinationCounty,
+        visitDate,
+        departureTime,
+        departureLocation,
+        vehicleType,
+        totalSeats,
+        leadMarshalId || req.user.id,
+        driverName,
+        driverPhone,
+        notes || null
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Saturday Convoy scheduled successfully',
+      data: { id: insertRes.id, projectName, visitDate }
+    });
+  } catch (error) {
+    logger.error('Create site visit error:', error);
+    res.status(500).json({ success: false, message: 'Server error while scheduling site visit' });
+  }
+};
+
+// @desc    Book seats on a Saturday Convoy for a prospective buyer
+// @route   POST /api/parcels/site-visits/:id/book
+// @access  Private
+const bookSiteVisitPassenger = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const siteVisitId = req.params.id;
+    const {
+      customerId,
+      visitorName,
+      visitorPhone,
+      seatsBooked = 1,
+      pickupPoint = 'Kencom House, CBD',
+      notes
+    } = req.body;
+
+    if (!visitorName || !visitorPhone) {
+      return res.status(400).json({ success: false, message: 'visitorName and visitorPhone are required' });
+    }
+
+    const visit = await db.query(
+      'SELECT * FROM site_visits WHERE id = ? AND tenant_id = ?',
+      [siteVisitId, tenantId]
+    );
+    if (!visit.length) {
+      return res.status(404).json({ success: false, message: 'Site visit convoy not found' });
+    }
+
+    const bookingRes = await db.run(
+      `INSERT INTO site_visit_bookings (
+        tenant_id, site_visit_id, customer_id, visitor_name, visitor_phone,
+        seats_booked, pickup_point, assigned_agent_id, status, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)`,
+      [
+        tenantId,
+        siteVisitId,
+        customerId || null,
+        visitorName,
+        visitorPhone,
+        parseInt(seatsBooked, 10) || 1,
+        pickupPoint,
+        req.user.id,
+        notes || null
+      ]
+    );
+
+    await db.query(
+      `UPDATE site_visits SET
+         booked_seats = (SELECT COALESCE(SUM(seats_booked), 0) FROM site_visit_bookings WHERE site_visit_id = ? AND status != 'cancelled')
+       WHERE id = ? AND tenant_id = ?`,
+      [siteVisitId, siteVisitId, tenantId]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: `${seatsBooked} seat(s) reserved for ${visitorName} on convoy to ${visit[0].project_name}`,
+      data: { bookingId: bookingRes.id }
+    });
+  } catch (error) {
+    logger.error('Book passenger error:', error);
+    res.status(500).json({ success: false, message: 'Server error while booking passenger' });
+  }
+};
+
 module.exports = {
   getPlotMatrix,
   reserveParcelWithHold,
   releaseParcelHold,
   convertHoldToSale,
+  getInstallments,
+  createInstallmentPlan,
+  matchInstallmentMpesa,
+  getSiteVisits,
+  createSiteVisit,
+  bookSiteVisitPassenger,
   getParcels,
   getParcel,
   createParcel,

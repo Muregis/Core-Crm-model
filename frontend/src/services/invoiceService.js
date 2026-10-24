@@ -5,4 +5,5 @@ export const invoiceService = {
   getInvoice: (id) => api.get(`/invoices/${id}`),
   getAgingReport: () => api.get('/invoices/aging/report'),
   createInvoice: (data) => api.post('/invoices', data),
+  convertQuoteToInvoice: (id) => api.post(`/invoices/${id}/convert-to-invoice`),
 }
