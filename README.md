@@ -1,5 +1,7 @@
 # Core CRM
 
+[![CI](https://github.com/Muregis/Core-Crm-model/actions/workflows/ci.yml/badge.svg)](https://github.com/Muregis/Core-Crm-model/actions/workflows/ci.yml)
+
 Multi-tenant CRM and operations platform for Kenyan SMEs, SACCOs, and specialized vertical workflows (sales pipeline, real-estate parcels, commercial quoting/invoicing, legal matters).
 
 Built for: **sales teams**, **land brokers**, **distributors**, and **small legal practices** that need tenant isolation, role-based access, M-Pesa-oriented payments, and background jobs — not another generic contacts spreadsheet.
