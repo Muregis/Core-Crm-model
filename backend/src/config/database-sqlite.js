@@ -75,11 +75,16 @@ class Database {
       this.createExpendituresTable();
       this.createSiteVisitsTable();
       this.createSiteVisitBookingsTable();
+      this.createPropertiesTable();
+      this.createTicketsTable();
+      this.createTicketStatusHistoryTable();
 
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN invoice_id INTEGER", () => {});
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN installment_id INTEGER", () => {});
       this.db.run("ALTER TABLE parcels ADD COLUMN reservation_expires_at TEXT", () => {});
       this.db.run("ALTER TABLE parcels ADD COLUMN project_name TEXT DEFAULT 'Phase 1'", () => {});
+      this.db.run("ALTER TABLE attachments ADD COLUMN ticket_id INTEGER", () => {});
+      this.db.run("ALTER TABLE tasks ADD COLUMN ticket_id INTEGER", () => {});
 
       this.db.run('SELECT 1', (err) => {
         if (err) logger.error('Schema ready check failed:', err);
@@ -890,6 +895,93 @@ class Database {
     this.db.run('CREATE INDEX IF NOT EXISTS idx_site_bookings_visit ON site_visit_bookings(site_visit_id)');
   }
 
+  createPropertiesTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS properties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        customer_id INTEGER,
+        name TEXT NOT NULL,
+        address TEXT,
+        unit_count INTEGER DEFAULT 1,
+        notes TEXT,
+        created_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_properties_tenant ON properties(tenant_id)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_properties_tenant_customer ON properties(tenant_id, customer_id)');
+  }
+
+  createTicketsTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        ticket_number TEXT NOT NULL,
+        property_id INTEGER,
+        customer_id INTEGER,
+        reported_by TEXT,
+        category TEXT NOT NULL DEFAULT 'general',
+        priority TEXT NOT NULL DEFAULT 'standard',
+        status TEXT NOT NULL DEFAULT 'reported',
+        description TEXT NOT NULL,
+        assigned_technician_id INTEGER,
+        scheduled_at TEXT,
+        started_at TEXT,
+        resolved_at TEXT,
+        closed_at TEXT,
+        landlord_approval_required INTEGER DEFAULT 0,
+        approval_threshold_kes REAL DEFAULT 0,
+        approved_at TEXT,
+        approved_by INTEGER,
+        labour_hours REAL DEFAULT 0,
+        parts_cost_kes REAL DEFAULT 0,
+        total_cost_kes REAL DEFAULT 0,
+        warranty_until TEXT,
+        notes TEXT,
+        internal_notes TEXT,
+        created_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (property_id) REFERENCES properties(id),
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (assigned_technician_id) REFERENCES users(id),
+        FOREIGN KEY (approved_by) REFERENCES users(id),
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        UNIQUE (tenant_id, ticket_number)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_tickets_tenant_status ON tickets(tenant_id, status)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_tickets_tenant_priority ON tickets(tenant_id, priority)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_tickets_tenant_property ON tickets(tenant_id, property_id)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_tickets_tenant_technician ON tickets(tenant_id, assigned_technician_id)');
+  }
+
+  createTicketStatusHistoryTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS ticket_status_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        ticket_id INTEGER NOT NULL,
+        from_status TEXT,
+        to_status TEXT NOT NULL,
+        changed_by INTEGER,
+        note TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+        FOREIGN KEY (changed_by) REFERENCES users(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_tsh_tenant_ticket ON ticket_status_history(tenant_id, ticket_id)');
+  }
+
   forTenant(tenantId) {
     if (!tenantId) {
       throw new Error('Tenant safety violation: tenantId is required for scoped database operations');
@@ -901,7 +993,8 @@ class Database {
         const tenantTables = [
           'CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS',
           'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS', 'PARCELS', 'PARCEL_STATUS_HISTORY',
-          'MATTERS', 'MATTER_TIME_ENTRIES', 'PARCEL_RESERVATIONS', 'DEAL_INSTALLMENTS', 'CONVEYANCING_MATTERS', 'PRODUCTS', 'INVOICES', 'INVOICE_ITEMS', 'EXPENDITURES', 'SITE_VISITS', 'SITE_VISIT_BOOKINGS'
+          'MATTERS', 'MATTER_TIME_ENTRIES', 'PARCEL_RESERVATIONS', 'DEAL_INSTALLMENTS', 'CONVEYANCING_MATTERS', 'PRODUCTS', 'INVOICES', 'INVOICE_ITEMS', 'EXPENDITURES', 'SITE_VISITS', 'SITE_VISIT_BOOKINGS',
+          'PROPERTIES', 'TICKETS', 'TICKET_STATUS_HISTORY'
         ];
         const touchesTenantTable = tenantTables.some((t) => upper.includes(t));
         if (touchesTenantTable && !upper.includes('TENANT_ID')) {

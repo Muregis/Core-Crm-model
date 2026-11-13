@@ -2,6 +2,7 @@ const logger = require('../src/utils/logger');
 const { setupEmailWorker } = require('./email.worker');
 const { setupReportWorker } = require('./report.worker');
 const { setupImportWorker } = require('./import.worker');
+const { setupTicketWorker } = require('./ticket.worker');
 require('../src/queue/events'); // Initialize global queue events to log to DB
 
 logger.info('Starting Background Workers...');
@@ -20,6 +21,10 @@ try {
   const importWorker = setupImportWorker();
   workers.push(importWorker);
   logger.info('Import worker started');
+
+  const ticketWorker = setupTicketWorker();
+  workers.push(ticketWorker);
+  logger.info('Ticket worker started');
 
 } catch (error) {
   logger.error('Failed to start workers:', error);

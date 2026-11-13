@@ -5,9 +5,11 @@ const connection = require('./connection');
 const emailQueue = new Queue('email', { connection });
 const reportQueue = new Queue('report', { connection });
 const importQueue = new Queue('import', { connection });
+const ticketQueue = new Queue('ticket', { connection });
 
 module.exports = {
   emailQueue,
   reportQueue,
   importQueue,
+  ticketQueue,
 };

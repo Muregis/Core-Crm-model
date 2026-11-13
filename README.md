@@ -27,6 +27,7 @@ Kenyan SMEs and SACCOs often track customers, deals, and payments across WhatsAp
 | **Payments** | M-Pesa-oriented records and encrypted credential storage patterns |
 | **Jobs** | BullMQ + Redis: enqueue reports → worker → status / result API |
 | **Vertical modules** | Land parcels & installments, commercial quotes/invoices, legal matters & billable time, executive analytics |
+| **Field Service (Sawa Repairs)** | Property maintenance tickets, trade categories, technician scheduling, landlord approvals, WhatsApp intake, SLA reminders |
 | **Compliance hooks** | PII-aware logging patterns, export / anonymize endpoints (KDPA-oriented) |
 
 > **Honest status:** Core CRM is under active product development. Vertical modules and analytics are implemented with automated tests; treat production rollout as phased (tenant onboarding, payment credentials, and ops monitoring still need operator setup).
@@ -61,6 +62,81 @@ POST /api/reports (or analytics report) → 202 { jobId }
 GET /api/jobs/:id → status
 GET /api/jobs/:id/result → payload / file when completed
 ```
+
+---
+
+## Service Ticket & Field-Service Module (Sawa Repairs)
+
+Powers **Sawa Repairs** (ticket-based property maintenance for landlords, Airbnb hosts, and SMEs across Kenya).
+
+### Core Capabilities
+
+1. **Multi-Tenant Property Portfolio (`/api/properties`)**:
+   - Manage properties and rental units linked to landlord customers.
+   - Track unit counts, physical addresses, notes, and open ticket counts per property.
+   - Enforce strict `tenant_id` isolation across all property listings and queries.
+
+2. **Full Lifecycle Service Tickets (`/api/tickets`)**:
+   - Human-readable ticket numbers (`SAW-YYYY-XXXXX`, e.g. `SAW-2026-00041`).
+   - Categorized by trade: `plumbing`, `electrical`, `roofing`, `painting`, `general`, `solar`, `other`.
+   - Prioritized by SLA: `emergency` (3h target), `standard`, `planned`.
+   - Strict state machine lifecycle validation:
+     `reported` ➔ `triaged` ➔ `scheduled` ➔ `in_progress` ➔ `awaiting_parts` ➔ `resolved` ➔ `verified` ➔ `closed` (with `reopened` rollback).
+   - Auto-recorded audit trail in `ticket_status_history` and `activity_log`.
+
+3. **Technician Assignment & Scheduling**:
+   - Assign field technicians (`users` table) and set `scheduled_at`.
+   - Automatically synchronizes with CRM `tasks` table (`task_type = 'field_service'`).
+   - BullMQ worker sends daily digest of open tickets per technician.
+
+4. **Landlord Approval & Cost Tracking**:
+   - Set approval threshold (KES).
+   - Flag approval requirements when estimated or actual repair costs (labour hours + parts) exceed threshold.
+   - Record landlord approvals/rejections with audit notes and timestamps.
+   - BullMQ reminder jobs for pending landlord approvals.
+
+5. **WhatsApp-Friendly Intake Endpoint (`POST /api/tickets/whatsapp-intake`)**:
+   - Accepts incoming structured payloads from WhatsApp bot/bridge:
+     ```json
+     {
+       "tenant_id": 1,
+       "propertyIdentifier": "Riverside Villa 4B",
+       "category": "plumbing",
+       "priority": "emergency",
+       "description": "Burst pipe flooding the bathroom",
+       "reportedBy": "Tenant John (+254712345678)",
+       "unitNumber": "4B",
+       "photoUrls": ["https://cdn.example.com/photos/burst_pipe.jpg"]
+     }
+     ```
+   - Automatically matches or provisions property, attaches before/after photos into `attachments`, and creates a ticket in `reported` status.
+   - Enqueues emergency SLA reminder job.
+
+6. **Dashboard Stats (`GET /api/tickets/dashboard/stats`)**:
+   - Real-time overview of open emergencies, SLA breaches, monthly ticket volume, total repair costs, and breakdown by category and status.
+
+### API Quick Reference
+
+| Method | Endpoint | Description | Access |
+|--------|----------|-------------|--------|
+| `GET` | `/api/properties` | List properties with landlord details & open ticket counts | Authenticated |
+| `POST` | `/api/properties` | Create property | Authenticated |
+| `GET` | `/api/properties/:id` | Get single property with details | Authenticated |
+| `PATCH` | `/api/properties/:id` | Update property | Authenticated |
+| `DELETE` | `/api/properties/:id` | Delete property | Admin / Manager |
+| `GET` | `/api/tickets` | List tickets with filters (`property_id`, `status`, `category`, `priority`, `technician_id`, date range, search `q`) | Authenticated |
+| `POST` | `/api/tickets` | Create service ticket (auto-generates `SAW-YYYY-XXXXX`) | Authenticated |
+| `GET` | `/api/tickets/:id` | Get ticket with attachments, linked tasks & status history | Authenticated |
+| `PATCH` | `/api/tickets/:id` | Update ticket details | Authenticated |
+| `DELETE` | `/api/tickets/:id` | Delete ticket | Admin / Manager |
+| `PATCH` | `/api/tickets/:id/status` | Transition ticket status with state machine validation | Authenticated |
+| `POST` | `/api/tickets/:id/schedule` | Assign technician + schedule (syncs linked task) | Authenticated |
+| `POST` | `/api/tickets/:id/approval` | Request or record landlord approval (`request`, `approve`, `reject`) | Authenticated |
+| `POST` | `/api/tickets/:id/costs` | Record labour hours, parts cost, and total KES | Authenticated |
+| `POST` | `/api/tickets/:id/attachments` | Add before/after repair photos or documents | Authenticated |
+| `GET` | `/api/tickets/:id/attachments` | List ticket attachments | Authenticated |
+| `GET` | `/api/tickets/dashboard/stats` | Dashboard metrics (open emergencies, SLA breaches, monthly counts) | Authenticated |
+| `POST` | `/api/tickets/whatsapp-intake` | Webhook intake for WhatsApp chat bots | Public / Authenticated |
 
 ---
 
