@@ -160,7 +160,20 @@ Powers **Sawa Repairs** (ticket-based property maintenance for landlords, Airbnb
 | `POST` | `/api/tickets/sawa-care/contracts` | Create Sawa Care managed contract | Authenticated |
 | `GET` | `/api/tickets/sawa-care/contracts/:id` | Get Sawa Care contract details | Authenticated |
 | `PATCH` | `/api/tickets/sawa-care/contracts/:id` | Update Sawa Care contract | Authenticated |
-| `POST` | `/api/tickets/whatsapp-intake` | Webhook intake for WhatsApp chat bots | Public / Authenticated |
+| `POST` | `/api/tickets/whatsapp-intake` | Webhook intake for WhatsApp chat bots (returns tracking URL) | Public / Authenticated |
+
+### Client Experience & Self-Service Portal (Zero Login Required)
+
+| Method | Endpoint | Description | Access |
+|--------|----------|-------------|--------|
+| `GET` | `/api/public/tickets/track/:token` | Public real-time tracker: SLA countdown clock, vetted fundi credentials badge, transparent pricing, 30-day workmanship warranty, milestone progression, before/after photos | Public (128-bit Token) |
+| `GET` | `/api/public/tickets/approve/:token` | Public view of repair quote estimate and technician notes for landlord sign-off | Public (128-bit Token) |
+| `POST` | `/api/public/tickets/approve/:token` | One-click landlord approval/rejection (automatically waives diagnostic call-out fee upon approval) | Public (128-bit Token) |
+| `GET` | `/api/public/properties/passport/:token` | Public Property Maintenance Passport: Health score (0–100), Airbnb Superhost readiness checklist, active warranties, recurring failure radar, lifetime service timeline | Public (128-bit Token) |
+| `GET` | `/api/tickets/dashboard/client-experience-metrics` | Executive Client Experience Scorecard (First-time-fix rate, active warranties, warranty rework rate, quote acceptance rate, Airbnb managed units) | Authenticated |
+| `POST` | `/api/properties/:id/preventive-inspections` | Schedule preventive package (`airbnb_guest_ready`, `pre_rains_leak_defense`, `quarterly_systems_check`) | Authenticated |
+| `GET` | `/api/properties/:id/preventive-inspections` | List scheduled and completed preventive inspections for property | Authenticated |
+| `PATCH` | `/api/properties/preventive-inspections/:id` | Complete preventive inspection, record checklist and condition rating, advance next due date (+90d) | Authenticated |
 
 ---
 

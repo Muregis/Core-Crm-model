@@ -79,6 +79,7 @@ class Database {
       this.createTicketsTable();
       this.createTicketStatusHistoryTable();
       this.createSawaCareContractsTable();
+      this.createPreventiveInspectionsTable();
 
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN invoice_id INTEGER", () => {});
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN installment_id INTEGER", () => {});
@@ -102,6 +103,18 @@ class Database {
       this.db.run("ALTER TABLE tickets ADD COLUMN responded_at TEXT", () => {});
       this.db.run("ALTER TABLE tickets ADD COLUMN is_sla_breached INTEGER DEFAULT 0", () => {});
       this.db.run("ALTER TABLE tickets ADD COLUMN is_warranty_claim INTEGER DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN tracking_token TEXT", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN approval_token TEXT", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN emergency_auto_approve_limit_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN first_time_fix INTEGER DEFAULT 1", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN first_response_minutes INTEGER", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN on_site_minutes INTEGER", () => {});
+      this.db.run("ALTER TABLE properties ADD COLUMN passport_token TEXT", () => {});
+      this.db.run("ALTER TABLE properties ADD COLUMN default_approval_threshold_kes REAL DEFAULT 5000", () => {});
+      this.db.run("ALTER TABLE properties ADD COLUMN emergency_auto_containment_limit_kes REAL DEFAULT 8000", () => {});
+      this.db.run("ALTER TABLE properties ADD COLUMN airbnb_managed INTEGER DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE properties ADD COLUMN last_preventive_inspection_at TEXT", () => {});
+      this.db.run("ALTER TABLE properties ADD COLUMN next_preventive_inspection_due TEXT", () => {});
 
       this.db.run('SELECT 1', (err) => {
         if (err) logger.error('Schema ready check failed:', err);
@@ -999,6 +1012,33 @@ class Database {
     this.db.run('CREATE INDEX IF NOT EXISTS idx_tsh_tenant_ticket ON ticket_status_history(tenant_id, ticket_id)');
   }
 
+  createPreventiveInspectionsTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS preventive_inspections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        property_id INTEGER NOT NULL,
+        package_type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'scheduled',
+        scheduled_date TEXT NOT NULL,
+        completed_at TEXT,
+        inspector_user_id INTEGER,
+        checklist_results TEXT,
+        overall_condition TEXT DEFAULT 'good',
+        recommended_actions TEXT,
+        cost_kes REAL DEFAULT 0,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (property_id) REFERENCES properties(id),
+        FOREIGN KEY (inspector_user_id) REFERENCES users(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_preventive_tenant ON preventive_inspections(tenant_id)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_preventive_property ON preventive_inspections(tenant_id, property_id)');
+  }
+
   createSawaCareContractsTable() {
     this.db.run(`
       CREATE TABLE IF NOT EXISTS sawa_care_contracts (
@@ -1040,7 +1080,7 @@ class Database {
           'CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS',
           'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS', 'PARCELS', 'PARCEL_STATUS_HISTORY',
           'MATTERS', 'MATTER_TIME_ENTRIES', 'PARCEL_RESERVATIONS', 'DEAL_INSTALLMENTS', 'CONVEYANCING_MATTERS', 'PRODUCTS', 'INVOICES', 'INVOICE_ITEMS', 'EXPENDITURES', 'SITE_VISITS', 'SITE_VISIT_BOOKINGS',
-          'PROPERTIES', 'TICKETS', 'TICKET_STATUS_HISTORY', 'SAWA_CARE_CONTRACTS'
+          'PROPERTIES', 'TICKETS', 'TICKET_STATUS_HISTORY', 'SAWA_CARE_CONTRACTS', 'PREVENTIVE_INSPECTIONS'
         ];
         const touchesTenantTable = tenantTables.some((t) => upper.includes(t));
         if (touchesTenantTable && !upper.includes('TENANT_ID')) {

@@ -484,6 +484,27 @@ const whatsAppIntake = async (req, res) => {
   }
 };
 
+// @desc    Get client experience metrics scorecard
+// @route   GET /api/tickets/dashboard/client-experience-metrics
+// @access  Private
+const getClientExperienceMetrics = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const metrics = await ticketService.getClientExperienceMetrics(tenantId);
+    res.status(200).json({
+      success: true,
+      data: metrics
+    });
+  } catch (error) {
+    logger.error('Error fetching client experience metrics:', error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Server error fetching client experience metrics'
+    });
+  }
+};
+
 module.exports = {
   getTickets,
   getTicket,
@@ -503,5 +524,6 @@ module.exports = {
   createSawaCareContract,
   getSawaCareContract,
   updateSawaCareContract,
-  whatsAppIntake
+  whatsAppIntake,
+  getClientExperienceMetrics
 };

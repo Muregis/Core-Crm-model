@@ -27,6 +27,7 @@ const productRoutes = require('./src/routes/products');
 const invoiceRoutes = require('./src/routes/invoices');
 const propertyRoutes = require('./src/routes/properties');
 const ticketRoutes = require('./src/routes/tickets');
+const publicRoutes = require('./src/routes/public');
 
 const db = require('./src/config/database');
 const { resolveTenant } = require('./src/middleware/tenant');
@@ -128,6 +129,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/public', publicRoutes);
 
 app.use('*', (req, res) => {
   res.status(404).json({

@@ -64,7 +64,16 @@ const getProperty = async (req, res) => {
 // @access  Private
 const createProperty = async (req, res) => {
   try {
-    const { name, customer_id, address, unit_count, notes } = req.body;
+    const {
+      name,
+      customer_id,
+      address,
+      unit_count,
+      airbnb_managed,
+      default_approval_threshold_kes,
+      emergency_auto_containment_limit_kes,
+      notes
+    } = req.body;
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return res.status(400).json({ success: false, message: 'Property name is required' });
     }
@@ -75,6 +84,9 @@ const createProperty = async (req, res) => {
       name: name.trim(),
       address: address || null,
       unit_count: parseInt(unit_count, 10) || 1,
+      airbnb_managed: airbnb_managed ? 1 : 0,
+      default_approval_threshold_kes: default_approval_threshold_kes !== undefined ? Number(default_approval_threshold_kes) : 5000,
+      emergency_auto_containment_limit_kes: emergency_auto_containment_limit_kes !== undefined ? Number(emergency_auto_containment_limit_kes) : 8000,
       notes: notes || null,
       created_by: req.user.id
     });
@@ -172,6 +184,90 @@ const getLandlordMonthlyReport = async (req, res) => {
   }
 };
 
+// @desc    Schedule a preventive inspection package for a property
+// @route   POST /api/properties/:id/preventive-inspections
+// @access  Private
+const schedulePreventiveInspection = async (req, res) => {
+  try {
+    const inspection = await propertyModel.schedulePreventiveInspection({
+      tenant_id: req.user.tenant_id,
+      property_id: req.params.id,
+      package_type: req.body.package_type,
+      scheduled_date: req.body.scheduled_date,
+      inspector_user_id: req.body.inspector_user_id || req.user.id,
+      cost_kes: req.body.cost_kes || 0,
+      notes: req.body.notes
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Preventive inspection package scheduled successfully',
+      data: { inspection }
+    });
+  } catch (error) {
+    logger.error('Error scheduling preventive inspection:', error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Server error scheduling preventive inspection'
+    });
+  }
+};
+
+// @desc    Get preventive inspections (by property or tenant-wide)
+// @route   GET /api/properties/:id/preventive-inspections or GET /api/properties/preventive-inspections
+// @access  Private
+const getPreventiveInspections = async (req, res) => {
+  try {
+    const propertyId = req.params.id ? Number(req.params.id) : req.query.property_id;
+    const inspections = await propertyModel.getPreventiveInspections(req.user.tenant_id, {
+      property_id: propertyId,
+      package_type: req.query.package_type,
+      status: req.query.status
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { inspections }
+    });
+  } catch (error) {
+    logger.error('Error fetching preventive inspections:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error fetching preventive inspections'
+    });
+  }
+};
+
+// @desc    Complete a preventive inspection with checklist and condition rating
+// @route   PATCH /api/properties/preventive-inspections/:inspectionId
+// @access  Private
+const completePreventiveInspection = async (req, res) => {
+  try {
+    const updated = await propertyModel.completePreventiveInspection(
+      req.params.inspectionId,
+      req.user.tenant_id,
+      req.body
+    );
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Preventive inspection not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Preventive inspection completed successfully',
+      data: { inspection: updated }
+    });
+  } catch (error) {
+    logger.error('Error completing preventive inspection:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error completing preventive inspection'
+    });
+  }
+};
+
 module.exports = {
   getProperties,
   getProperty,
@@ -179,5 +275,8 @@ module.exports = {
   updateProperty,
   deleteProperty,
   getMaintenanceMemory,
-  getLandlordMonthlyReport
+  getLandlordMonthlyReport,
+  schedulePreventiveInspection,
+  getPreventiveInspections,
+  completePreventiveInspection
 };

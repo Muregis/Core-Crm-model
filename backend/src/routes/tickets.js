@@ -20,7 +20,8 @@ const {
   createSawaCareContract,
   getSawaCareContract,
   updateSawaCareContract,
-  whatsAppIntake
+  whatsAppIntake,
+  getClientExperienceMetrics
 } = require('../controllers/ticketController');
 
 const router = express.Router();
@@ -60,6 +61,7 @@ router.use(protect);
 // Dashboard endpoints (must precede /:id)
 router.get('/dashboard/stats', getDashboardStats);
 router.get('/dashboard/company-plan', getCompanyPlanMetrics);
+router.get('/dashboard/client-experience-metrics', getClientExperienceMetrics);
 
 // Sawa Care Managed Contracts & Conversion endpoints (must precede /:id)
 router.get('/sawa-care/eligible', getRepeatCustomers);

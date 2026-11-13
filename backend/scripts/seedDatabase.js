@@ -657,20 +657,28 @@ async function seed() {
   let prop1Id, prop2Id;
   if (propCount[0].cnt === 0) {
     const p1 = await db.query(`
-      INSERT INTO properties (tenant_id, customer_id, name, address, unit_count, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO properties (
+        tenant_id, customer_id, name, address, unit_count,
+        airbnb_managed, passport_token, default_approval_threshold_kes, emergency_auto_containment_limit_kes,
+        notes, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       sawaTenantId, sawaCustId, 'Kilimani Heights Apartment 4B', 'Argwings Kodhek Road, Kilimani, Nairobi',
-      24, 'High-end 2-bedroom furnished apartment with instant shower and solar backup', sawaAdminId
+      24, 1, 'pass_kilimani_demo_passport', 5000, 8000,
+      'High-end 2-bedroom furnished apartment with instant shower and solar backup. Airbnb managed.', sawaAdminId
     ]);
     prop1Id = p1.insertId;
 
     const p2 = await db.query(`
-      INSERT INTO properties (tenant_id, customer_id, name, address, unit_count, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO properties (
+        tenant_id, customer_id, name, address, unit_count,
+        airbnb_managed, passport_token, default_approval_threshold_kes, emergency_auto_containment_limit_kes,
+        notes, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       sawaTenantId, sawaCustId, 'Riverside Parkside Townhouse 12', 'Riverside Drive, Westlands, Nairobi',
-      1, '4-bedroom family townhouse with private lawn and pressure booster pump', sawaAdminId
+      1, 0, 'pass_riverside_demo_passport', 10000, 15000,
+      '4-bedroom family townhouse with private lawn and pressure booster pump', sawaAdminId
     ]);
     prop2Id = p2.insertId;
     console.log('Seeded properties for Sawa Repairs.');
@@ -687,13 +695,15 @@ async function seed() {
           tenant_id, ticket_number, property_id, customer_id, reported_by,
           category, priority, status, description, assigned_technician_id,
           scheduled_at, started_at, landlord_approval_required, approval_threshold_kes,
-          approved_at, approved_by, labour_hours, parts_cost_kes, total_cost_kes, notes, created_by
+          approved_at, approved_by, labour_hours, parts_cost_kes, total_cost_kes,
+          tracking_token, approval_token, notes, created_by
         ) VALUES (
           ?, 'SAW-2026-00001', ?, ?, 'Guest Alice (+254733112233)',
           'plumbing', 'emergency', 'scheduled',
           'Main water pressure relief valve cracked, leaking onto bathroom floor',
           ?, '2026-11-15 10:00:00', null, 1, 5000,
           '2026-11-13 14:00:00', ?, 2.5, 6800, 10550,
+          'tr_sawa_demo_plumbing_track', 'appr_sawa_demo_plumbing_appr',
           'Landlord approved valve replacement via WhatsApp', ?
         )
       `, [sawaTenantId, targetProp1, sawaCustId, sawaTechId, sawaAdminId, sawaAdminId]);
@@ -722,7 +732,8 @@ async function seed() {
           category, priority, status, description, assigned_technician_id,
           scheduled_at, started_at, labour_hours, parts_cost_kes, total_cost_kes,
           callout_fee_kes, labour_billed_kes, labour_cost_kes, parts_billed_kes,
-          invoice_amount_kes, gross_margin_kes, margin_percentage, notes, created_by
+          invoice_amount_kes, gross_margin_kes, margin_percentage,
+          tracking_token, notes, created_by
         ) VALUES (
           ?, 'SAW-2026-00002', ?, ?, 'Caretaker Omwamba (+254799001122)',
           'electrical', 'standard', 'in_progress',
@@ -730,6 +741,7 @@ async function seed() {
           ?, '2026-11-14 09:00:00', '2026-11-14 09:15:00', 1.5, 3200, 5450,
           2000, 3500, 1500, 3840,
           7340, 2640, 36.0,
+          'tr_sawa_demo_electrical_track',
           'Load testing circuit wiring and replacing 20A breaker', ?
         )
       `, [sawaTenantId, prop2Id || targetProp1, sawaCustId, sawaTechId, sawaAdminId]);
@@ -754,7 +766,8 @@ async function seed() {
           scheduled_at, started_at, resolved_at, warranty_until,
           callout_fee_kes, callout_fee_waived, labour_hours, labour_cost_kes, labour_billed_kes,
           parts_cost_kes, parts_markup_percentage, parts_billed_kes, travel_cost_kes,
-          invoice_amount_kes, total_cost_kes, gross_margin_kes, margin_percentage, notes, created_by
+          invoice_amount_kes, total_cost_kes, gross_margin_kes, margin_percentage,
+          tracking_token, notes, created_by
         ) VALUES (
           ?, 'SAW-2026-00003', ?, ?, 'Guest John (+254711998877)',
           'plumbing', 'standard', 'resolved',
@@ -763,6 +776,7 @@ async function seed() {
           2000, 1, 2.0, 1500, 3500,
           2500, 20.0, 3000, 500,
           6500, 4500, 2000, 30.8,
+          'tr_sawa_demo_roofing_track',
           'Replaced ceramic cartridge and resealed silicon joint. 30-day warranty active.', ?
         )
       `, [sawaTenantId, targetProp1, sawaCustId, sawaTechId, resolvedAt, warrantyExp, sawaAdminId]);
@@ -792,6 +806,38 @@ async function seed() {
           )
         `, [sawaTenantId, sawaCustId, sawaAdminId]);
         console.log('Seeded Sawa Care Portfolio contract for Peter Ndung\'u.');
+      }
+
+      // Seed a Preventive Inspection (Airbnb Guest-Ready) for Kilimani Heights Apt 4B
+      const prevCount = await db.query('SELECT COUNT(*) as cnt FROM preventive_inspections WHERE tenant_id = ?', [sawaTenantId]);
+      if (prevCount[0].cnt === 0) {
+        await db.query(`
+          INSERT INTO preventive_inspections (
+            tenant_id, property_id, package_type, status, scheduled_date, completed_at,
+            inspector_user_id, checklist_results, overall_condition, recommended_actions,
+            cost_kes, notes
+          ) VALUES (
+            ?, ?, 'airbnb_guest_ready', 'completed', '2026-11-05', '2026-11-05 14:30:00',
+            ?, ?, 'excellent', 'Inspect water heater thermostat before end of December peak season',
+            4500.00, 'Pre-holiday comprehensive systems check. Property is 100% Superhost ready.'
+          )
+        `, [
+          sawaTenantId, targetProp1, sawaTechId,
+          JSON.stringify({
+            hot_water_heaters: 'passed',
+            circuit_breakers: 'passed',
+            kitchen_appliances: 'passed',
+            water_pressure: 'passed',
+            locksets: 'passed'
+          })
+        ]);
+        await db.query(`
+          UPDATE properties SET
+            last_preventive_inspection_at = '2026-11-05 14:30:00',
+            next_preventive_inspection_due = '2027-02-03 14:30:00'
+          WHERE id = ? AND tenant_id = ?
+        `, [targetProp1, sawaTenantId]);
+        console.log('Seeded completed Airbnb Guest-Ready preventive inspection for Kilimani Heights.');
       }
 
       console.log('Seeded demo tickets & field service tasks for Sawa Repairs.');

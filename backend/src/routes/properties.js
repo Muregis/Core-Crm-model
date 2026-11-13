@@ -8,7 +8,10 @@ const {
   updateProperty,
   deleteProperty,
   getMaintenanceMemory,
-  getLandlordMonthlyReport
+  getLandlordMonthlyReport,
+  schedulePreventiveInspection,
+  getPreventiveInspections,
+  completePreventiveInspection
 } = require('../controllers/propertyController');
 
 const router = express.Router();
@@ -27,6 +30,24 @@ router.use(protect);
 
 // Landlord monthly consolidated report (must precede /:id)
 router.get('/landlord/:customerId/monthly-report', getLandlordMonthlyReport);
+
+// Preventive Maintenance Inspection endpoints
+router.get('/preventive-inspections', getPreventiveInspections);
+router.patch('/preventive-inspections/:inspectionId', completePreventiveInspection);
+router.post(
+  '/:id/preventive-inspections',
+  [
+    body('package_type')
+      .isIn(['airbnb_guest_ready', 'pre_rains_leak_defense', 'quarterly_systems_check'])
+      .withMessage("Invalid package_type. Allowed: 'airbnb_guest_ready', 'pre_rains_leak_defense', 'quarterly_systems_check'"),
+    body('scheduled_date')
+      .notEmpty()
+      .withMessage('scheduled_date is required')
+  ],
+  validate,
+  schedulePreventiveInspection
+);
+router.get('/:id/preventive-inspections', getPreventiveInspections);
 
 router.get('/', getProperties);
 

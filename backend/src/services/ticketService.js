@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const ticketModel = require('../models/ticketModel');
 const propertyModel = require('../models/propertyModel');
 const db = require('../config/database');
@@ -471,6 +472,9 @@ class TicketService {
 
     if (normAction === 'request') {
       updates.landlord_approval_required = 1;
+      if (!ticket.approval_token) {
+        updates.approval_token = 'appr_' + crypto.randomBytes(16).toString('hex');
+      }
       if (approval_threshold_kes !== undefined) {
         updates.approval_threshold_kes = Number(approval_threshold_kes);
       }
@@ -558,10 +562,15 @@ class TicketService {
 
     // Activity Log
     try {
+      let logUserId = userId;
+      if (!logUserId) {
+        const uRows = await db.query('SELECT id FROM users WHERE tenant_id = ? ORDER BY id ASC LIMIT 1', [tenantId]);
+        logUserId = uRows[0]?.id || 1;
+      }
       await db.query(
         `INSERT INTO activity_log (tenant_id, user_id, action, entity_type, entity_id, new_values)
          VALUES (?, ?, 'LANDLORD_APPROVAL_ACTION', 'ticket', ?, ?)`,
-        [tenantId, userId, ticketId, JSON.stringify({ action: normAction, notes })]
+        [tenantId, logUserId, ticketId, JSON.stringify({ action: normAction, notes })]
       );
     } catch (e) {
       logger.warn('Activity log write failed:', e.message);
@@ -820,7 +829,13 @@ class TicketService {
       }
     }
 
-    return ticketModel.findById(ticket.id, tenantId);
+    const savedTicket = await ticketModel.findById(ticket.id, tenantId);
+    const trackingUrl = `https://sawarepairs.co.ke/track/${savedTicket.tracking_token}`;
+    return {
+      ...savedTicket,
+      tracking_url: trackingUrl,
+      whatsapp_confirmation: `Habari ${reportedBy || 'valued customer'}, your repair ticket #${savedTicket.ticket_number} has been logged. Priority: ${savedTicket.priority.toUpperCase()}. Our vetted specialist has been notified. Track live progress here: ${trackingUrl}`
+    };
   }
 
   async getDashboardStats(tenantId) {
@@ -909,6 +924,94 @@ class TicketService {
       throw err;
     }
     return report;
+  }
+  async findByTrackingToken(token) {
+    const ticket = await ticketModel.findByTrackingToken(token);
+    if (!ticket) {
+      const err = new Error('Tracking token not found or invalid');
+      err.statusCode = 404;
+      throw err;
+    }
+    return ticket;
+  }
+
+  async findByApprovalToken(token) {
+    const approvalView = await ticketModel.findByApprovalToken(token);
+    if (!approvalView) {
+      const err = new Error('Approval token not found or invalid');
+      err.statusCode = 404;
+      throw err;
+    }
+    return approvalView;
+  }
+
+  async processPublicApproval(token, action, notes) {
+    const ticketView = await ticketModel.findByApprovalToken(token);
+    if (!ticketView) {
+      const err = new Error('Approval token not found or invalid');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const normAction = String(action).toLowerCase();
+    if (normAction !== 'approve' && normAction !== 'reject') {
+      const err = new Error("Invalid action. Must be 'approve' or 'reject'");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const updated = await this.handleLandlordApproval(
+      ticketView.ticket_id,
+      ticketView.tenant_id,
+      null,
+      { action: normAction, notes }
+    );
+
+    return {
+      success: true,
+      action: normAction,
+      message: normAction === 'approve'
+        ? 'Quote approved. Call-out fee waived and repair scheduled.'
+        : 'Quote rejected. Our team has been notified.',
+      ticket: updated
+    };
+  }
+
+  async findByPassportToken(token) {
+    const passport = await propertyModel.findByPassportToken(token);
+    if (!passport) {
+      const err = new Error('Property Maintenance Passport not found or invalid token');
+      err.statusCode = 404;
+      throw err;
+    }
+    return passport;
+  }
+
+  async getClientExperienceMetrics(tenantId) {
+    return ticketModel.getClientExperienceMetrics(tenantId);
+  }
+
+  async schedulePreventiveInspection(propertyId, tenantId, userId, data) {
+    return propertyModel.schedulePreventiveInspection({
+      ...data,
+      property_id: propertyId,
+      tenant_id: tenantId,
+      inspector_user_id: userId
+    });
+  }
+
+  async getPreventiveInspections(tenantId, filters = {}) {
+    return propertyModel.getPreventiveInspections(tenantId, filters);
+  }
+
+  async completePreventiveInspection(inspectionId, tenantId, userId, data) {
+    const completed = await propertyModel.completePreventiveInspection(inspectionId, tenantId, data);
+    if (!completed) {
+      const err = new Error('Preventive inspection not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    return completed;
   }
 }
 
