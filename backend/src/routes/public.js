@@ -16,6 +16,10 @@ const router = express.Router();
 const publicRateLimits = new Map();
 const rateLimitPublicPortal = (maxRequests = 60, windowMs = 15 * 60 * 1000) => {
   return (req, res, next) => {
+    // In local development or test mode, bypass rate limiter
+    if (process.env.NODE_ENV !== 'production') {
+      return next();
+    }
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
     const now = Date.now();
     const current = publicRateLimits.get(ip) || [];

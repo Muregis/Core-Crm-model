@@ -121,8 +121,12 @@ class WhatsAppBridge {
         data: {
           ticket_number: ticket.ticket_number,
           tracking_url: ticket.tracking_url,
-          ticket_id: ticket.id
-        }
+          tracking_token: ticket.tracking_token,
+          ticket_id: ticket.id,
+          category,
+          priority
+        },
+        ticket
       });
     } catch (error) {
       logger.error('WhatsApp Meta Webhook error:', error);
