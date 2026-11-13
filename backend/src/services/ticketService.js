@@ -52,6 +52,20 @@ class TicketService {
     return Array.isArray(allowed) && allowed.includes(targetStatus);
   }
 
+  calculateSlaDeadline(priority, fromDate = new Date()) {
+    const base = new Date(fromDate);
+    if (priority === 'emergency') {
+      // 3 hours response SLA (Product Document v2.1 §4.4: 2–4 hours)
+      return new Date(base.getTime() + 3 * 60 * 60 * 1000).toISOString();
+    } else if (priority === 'planned') {
+      // 96 hours (4 working days: 3–5 working days)
+      return new Date(base.getTime() + 96 * 60 * 60 * 1000).toISOString();
+    } else {
+      // Standard: 36 hours (24–48 hours)
+      return new Date(base.getTime() + 36 * 60 * 60 * 1000).toISOString();
+    }
+  }
+
   async createTicket(tenantId, userId, ticketData) {
     const {
       property_id,
@@ -64,6 +78,9 @@ class TicketService {
       scheduled_at,
       landlord_approval_required,
       approval_threshold_kes,
+      callout_fee_kes,
+      emergency_premium_kes,
+      is_warranty_claim = 0,
       notes,
       internal_notes,
       photo_urls
@@ -133,6 +150,15 @@ class TicketService {
       }
     }
 
+    // Compute SLA response deadline
+    const slaDueAt = this.calculateSlaDeadline(normPriority);
+
+    // Default callout fee (v2.1 §4.3: KSh 1,500–2,500)
+    let finalCalloutFee = callout_fee_kes !== undefined ? Number(callout_fee_kes) : 2000;
+    let finalEmergencyPremium = emergency_premium_kes !== undefined
+      ? Number(emergency_premium_kes)
+      : (normPriority === 'emergency' ? 1000 : 0);
+
     const ticket = await ticketModel.create({
       tenant_id: tenantId,
       property_id: property_id ? Number(property_id) : null,
@@ -146,6 +172,10 @@ class TicketService {
       scheduled_at: scheduled_at || null,
       landlord_approval_required: landlord_approval_required ? 1 : 0,
       approval_threshold_kes: Number(approval_threshold_kes) || 0,
+      callout_fee_kes: finalCalloutFee,
+      emergency_premium_kes: finalEmergencyPremium,
+      sla_response_due_at: slaDueAt,
+      is_warranty_claim: is_warranty_claim ? 1 : 0,
       notes: notes || null,
       internal_notes: internal_notes || null,
       created_by: userId
@@ -241,6 +271,16 @@ class TicketService {
     const updates = { status: normTarget };
     const nowIso = new Date().toISOString();
 
+    // Check SLA response timing when acknowledged from reported
+    if (ticket.status === 'reported' && ['triaged', 'scheduled', 'in_progress'].includes(normTarget)) {
+      if (!ticket.responded_at) {
+        updates.responded_at = nowIso;
+        if (ticket.sla_response_due_at && nowIso > ticket.sla_response_due_at) {
+          updates.is_sla_breached = 1;
+        }
+      }
+    }
+
     if (normTarget === 'scheduled') {
       if (options.scheduled_at) {
         updates.scheduled_at = options.scheduled_at;
@@ -253,6 +293,11 @@ class TicketService {
       }
     } else if (normTarget === 'resolved') {
       updates.resolved_at = nowIso;
+      // 30-day workmanship warranty (v2.1 §4.2)
+      if (!ticket.warranty_until) {
+        const warrantyDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        updates.warranty_until = warrantyDate;
+      }
     } else if (normTarget === 'closed') {
       updates.closed_at = nowIso;
     } else if (normTarget === 'reopened') {
@@ -354,6 +399,12 @@ class TicketService {
     if (ticket.status === 'reported' || ticket.status === 'triaged') {
       targetStatus = 'scheduled';
       updates.status = 'scheduled';
+      if (!ticket.responded_at) {
+        updates.responded_at = new Date().toISOString();
+        if (ticket.sla_response_due_at && updates.responded_at > ticket.sla_response_due_at) {
+          updates.is_sla_breached = 1;
+        }
+      }
     }
 
     await ticketModel.update(ticketId, tenantId, updates);
@@ -455,6 +506,21 @@ class TicketService {
     } else if (normAction === 'approve' || normAction === 'record') {
       updates.approved_at = nowIso;
       updates.approved_by = userId;
+      // If customer approves repair, call-out fee is waived! (Product Document v2.1 §4.3)
+      updates.callout_fee_waived = 1;
+
+      // Recalculate invoice amount and margin if costs exist
+      const labourBilled = Number(ticket.labour_billed_kes || 0);
+      const partsBilled = Number(ticket.parts_billed_kes || 0);
+      const premium = Number(ticket.emergency_premium_kes || 0);
+      const newInvoice = premium + labourBilled + partsBilled;
+      const cogs = Number(ticket.labour_cost_kes || 0) + Number(ticket.parts_cost_kes || 0) + Number(ticket.travel_cost_kes || 0);
+      const margin = newInvoice - cogs;
+
+      updates.invoice_amount_kes = newInvoice;
+      updates.gross_margin_kes = margin;
+      updates.margin_percentage = newInvoice > 0 ? Number(((margin / newInvoice) * 100).toFixed(1)) : 0;
+
       if (notes) {
         updates.notes = ticket.notes ? `${ticket.notes}\n[Approved]: ${notes}` : `[Approved]: ${notes}`;
       }
@@ -467,7 +533,7 @@ class TicketService {
         from_status: ticket.status,
         to_status: ticket.status,
         changed_by: userId,
-        note: `Landlord approval recorded by user ${userId}. ${notes || ''}`
+        note: `Landlord approval recorded by user ${userId}. Callout fee waived per v2.1 pricing policy. ${notes || ''}`
       });
     } else if (normAction === 'reject') {
       updates.internal_notes = ticket.internal_notes
@@ -485,7 +551,7 @@ class TicketService {
         note: `Landlord approval rejected. Reason: ${notes || 'Not specified'}`
       });
     } else {
-      const err = new Error("Invalid approval action. Allowed: 'request', 'approve', 'reject'");
+      const err = new Error("Invalid approval action. Allowed: 'request', 'approve', 'record', 'reject'");
       err.statusCode = 400;
       throw err;
     }
@@ -505,7 +571,22 @@ class TicketService {
   }
 
   async recordCosts(ticketId, tenantId, userId, costData) {
-    const { labour_hours, parts_cost_kes, hourly_rate_kes, total_cost_kes, notes } = costData;
+    const {
+      labour_hours,
+      hourly_rate_kes,
+      labour_cost_kes,
+      labour_billed_kes,
+      parts_cost_kes,
+      parts_markup_percentage,
+      parts_billed_kes,
+      callout_fee_kes,
+      callout_fee_waived,
+      emergency_premium_kes,
+      travel_cost_kes,
+      total_cost_kes,
+      invoice_amount_kes,
+      notes
+    } = costData;
 
     const ticket = await ticketModel.findById(ticketId, tenantId);
     if (!ticket) {
@@ -514,29 +595,81 @@ class TicketService {
       throw err;
     }
 
-    const finalLabourHours = labour_hours !== undefined ? Number(labour_hours) : ticket.labour_hours;
-    const finalPartsCost = parts_cost_kes !== undefined ? Number(parts_cost_kes) : ticket.parts_cost_kes;
+    // 1. Labour calculations
+    const finalLabourHours = labour_hours !== undefined ? Number(labour_hours) : Number(ticket.labour_hours || 0);
+    const labourRate = hourly_rate_kes !== undefined ? Number(hourly_rate_kes) : 0;
+    const finalLabourCost = labour_cost_kes !== undefined ? Number(labour_cost_kes) : Number(ticket.labour_cost_kes || 0);
+    let finalLabourBilled = labour_billed_kes !== undefined
+      ? Number(labour_billed_kes)
+      : (labourRate > 0 ? finalLabourHours * labourRate : Number(ticket.labour_billed_kes || 0));
 
-    let computedTotal;
-    if (total_cost_kes !== undefined && total_cost_kes !== null) {
-      computedTotal = Number(total_cost_kes);
+    // 2. Parts calculations (wholesale cost + 15–25% margin markup per v2.1 §4.3)
+    const finalPartsCost = parts_cost_kes !== undefined ? Number(parts_cost_kes) : Number(ticket.parts_cost_kes || 0);
+    const finalPartsMarkup = parts_markup_percentage !== undefined
+      ? Number(parts_markup_percentage)
+      : Number(ticket.parts_markup_percentage || 20);
+    const finalPartsBilled = parts_billed_kes !== undefined
+      ? Number(parts_billed_kes)
+      : (finalPartsCost > 0 ? finalPartsCost * (1 + finalPartsMarkup / 100) : 0);
+
+    // 3. Callout & Travel
+    const finalCalloutFee = callout_fee_kes !== undefined ? Number(callout_fee_kes) : Number(ticket.callout_fee_kes || 0);
+    const isCalloutWaived = callout_fee_waived !== undefined ? Boolean(callout_fee_waived) : Boolean(ticket.callout_fee_waived);
+    const effectiveCallout = isCalloutWaived ? 0 : finalCalloutFee;
+
+    const finalEmergencyPremium = emergency_premium_kes !== undefined
+      ? Number(emergency_premium_kes)
+      : Number(ticket.emergency_premium_kes || 0);
+    const finalTravelCost = travel_cost_kes !== undefined ? Number(travel_cost_kes) : Number(ticket.travel_cost_kes || 0);
+
+    // 4. Invoiced Amount (Gross Revenue)
+    let finalInvoiceAmount;
+    if (invoice_amount_kes !== undefined && invoice_amount_kes !== null) {
+      finalInvoiceAmount = Number(invoice_amount_kes);
     } else {
-      const labourRate = hourly_rate_kes !== undefined ? Number(hourly_rate_kes) : 0;
-      computedTotal = (finalLabourHours * labourRate) + finalPartsCost;
+      finalInvoiceAmount = effectiveCallout + finalEmergencyPremium + finalLabourBilled + finalPartsBilled;
     }
+
+    // 5. Total Cost (backward compatible with labour_hours * hourly_rate + parts_cost if total_cost_kes not given)
+    let computedTotalCost;
+    if (total_cost_kes !== undefined && total_cost_kes !== null) {
+      computedTotalCost = Number(total_cost_kes);
+    } else if (labourRate > 0 || finalPartsCost > 0) {
+      computedTotalCost = (finalLabourHours * labourRate) + finalPartsCost;
+    } else {
+      computedTotalCost = finalLabourCost + finalPartsCost + finalTravelCost;
+    }
+
+    // 6. Direct COGS and Gross Margin
+    const directCogs = finalLabourCost + finalPartsCost + finalTravelCost;
+    const grossMargin = finalInvoiceAmount > 0 && directCogs > 0 ? finalInvoiceAmount - directCogs : (finalInvoiceAmount - computedTotalCost);
+    const marginPercentage = finalInvoiceAmount > 0
+      ? Number(((grossMargin / finalInvoiceAmount) * 100).toFixed(1))
+      : 0;
 
     const updates = {
       labour_hours: finalLabourHours,
+      labour_cost_kes: finalLabourCost,
+      labour_billed_kes: finalLabourBilled,
       parts_cost_kes: finalPartsCost,
-      total_cost_kes: computedTotal
+      parts_markup_percentage: finalPartsMarkup,
+      parts_billed_kes: finalPartsBilled,
+      callout_fee_kes: finalCalloutFee,
+      callout_fee_waived: isCalloutWaived ? 1 : 0,
+      emergency_premium_kes: finalEmergencyPremium,
+      travel_cost_kes: finalTravelCost,
+      total_cost_kes: computedTotalCost,
+      invoice_amount_kes: finalInvoiceAmount,
+      gross_margin_kes: grossMargin,
+      margin_percentage: marginPercentage
     };
 
     if (notes) {
       updates.notes = ticket.notes ? `${ticket.notes}\n[Cost Update]: ${notes}` : `[Cost Update]: ${notes}`;
     }
 
-    // If total cost exceeds approval threshold and not yet approved, flag approval required
-    if (ticket.approval_threshold_kes > 0 && computedTotal > ticket.approval_threshold_kes && !ticket.approved_at) {
+    // If total invoice exceeds approval threshold and not yet approved, flag approval required
+    if (ticket.approval_threshold_kes > 0 && finalInvoiceAmount > ticket.approval_threshold_kes && !ticket.approved_at) {
       updates.landlord_approval_required = 1;
     }
 
@@ -622,6 +755,8 @@ class TicketService {
       ? String(priority).toLowerCase()
       : 'standard';
 
+    const slaDueAt = this.calculateSlaDeadline(normPriority);
+
     const ticket = await ticketModel.create({
       tenant_id: tenantId,
       property_id: property ? property.id : null,
@@ -631,6 +766,9 @@ class TicketService {
       priority: normPriority,
       status: 'reported',
       description: description.trim(),
+      callout_fee_kes: 2000,
+      emergency_premium_kes: normPriority === 'emergency' ? 1000 : 0,
+      sla_response_due_at: slaDueAt,
       notes: unitNumber ? `Unit/House: ${unitNumber}` : null,
       created_by: null
     });
@@ -687,6 +825,90 @@ class TicketService {
 
   async getDashboardStats(tenantId) {
     return ticketModel.getDashboardStats(tenantId);
+  }
+
+  async getCompanyPlanMetrics(tenantId) {
+    return ticketModel.getCompanyPlanMetrics(tenantId);
+  }
+
+  async getRepeatCustomers(tenantId, days = 90) {
+    return ticketModel.getRepeatCustomers(tenantId, days);
+  }
+
+  async createSawaCareContract(tenantId, userId, contractData) {
+    const { customer_id, tier = 'home', status = 'prospect' } = contractData;
+
+    if (!customer_id) {
+      const err = new Error('customer_id is required for Sawa Care contract');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const cust = await db.query(
+      `SELECT id FROM customers WHERE id = ? AND tenant_id = ?`,
+      [Number(customer_id), tenantId]
+    );
+    if (!cust || cust.length === 0) {
+      const err = new Error('Customer not found for this tenant');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const contract = await ticketModel.createSawaCareContract({
+      ...contractData,
+      tenant_id: tenantId,
+      created_by: userId
+    });
+
+    try {
+      await db.query(
+        `INSERT INTO activity_log (tenant_id, user_id, action, entity_type, entity_id, new_values)
+         VALUES (?, ?, 'CREATE_SAWA_CARE_CONTRACT', 'sawa_care_contract', ?, ?)`,
+        [tenantId, userId, contract.id, JSON.stringify({ customer_id, tier, status })]
+      );
+    } catch (e) {
+      logger.warn('Activity log write failed:', e.message);
+    }
+
+    return contract;
+  }
+
+  async getSawaCareContracts(tenantId, filters = {}) {
+    return ticketModel.getSawaCareContracts(tenantId, filters);
+  }
+
+  async getSawaCareContractById(id, tenantId) {
+    return ticketModel.getSawaCareContractById(id, tenantId);
+  }
+
+  async updateSawaCareContract(id, tenantId, userId, data) {
+    const updated = await ticketModel.updateSawaCareContract(id, tenantId, data);
+    if (!updated) {
+      const err = new Error('Sawa Care contract not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    return updated;
+  }
+
+  async getMaintenanceMemory(propertyId, tenantId) {
+    const memory = await propertyModel.getMaintenanceMemory(propertyId, tenantId);
+    if (!memory) {
+      const err = new Error('Property not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    return memory;
+  }
+
+  async getLandlordMonthlyReport(customerId, tenantId, monthYear = null) {
+    const report = await propertyModel.getLandlordMonthlyReport(customerId, tenantId, monthYear);
+    if (!report) {
+      const err = new Error('Landlord customer not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    return report;
   }
 }
 

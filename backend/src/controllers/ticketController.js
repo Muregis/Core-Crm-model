@@ -18,6 +18,8 @@ const getTickets = async (req, res) => {
       assigned_technician_id,
       technician_id,
       landlord_approval_required,
+      is_sla_breached,
+      is_warranty_claim,
       startDate,
       endDate,
       from_date,
@@ -39,6 +41,8 @@ const getTickets = async (req, res) => {
       priority,
       assigned_technician_id: assigned_technician_id || technician_id,
       landlord_approval_required,
+      is_sla_breached,
+      is_warranty_claim,
       startDate: startDate || from_date,
       endDate: endDate || to_date,
       q
@@ -110,7 +114,7 @@ const createTicket = async (req, res) => {
   }
 };
 
-// @desc    Update ticket
+// @desc    Update ticket details
 // @route   PATCH /api/tickets/:id
 // @access  Private
 const updateTicket = async (req, res) => {
@@ -150,32 +154,28 @@ const deleteTicket = async (req, res) => {
   }
 };
 
-// @desc    Transition ticket status (with state machine validation)
+// @desc    Transition ticket status through lifecycle
 // @route   PATCH /api/tickets/:id/status
 // @access  Private
 const transitionStatus = async (req, res) => {
   try {
-    const targetStatus = req.body.status || req.body.target_status;
-    if (!targetStatus) {
+    const { status, note, notes, scheduled_at, assigned_technician_id } = req.body;
+    if (!status) {
       return res.status(400).json({ success: false, message: 'Target status is required' });
     }
 
-    const updated = await ticketService.transitionStatus(
+    const ticket = await ticketService.transitionStatus(
       req.params.id,
       req.user.tenant_id,
       req.user.id,
-      targetStatus,
-      {
-        note: req.body.note || req.body.notes,
-        scheduled_at: req.body.scheduled_at,
-        assigned_technician_id: req.body.assigned_technician_id
-      }
+      status,
+      { note, notes, scheduled_at, assigned_technician_id }
     );
 
     res.json({
       success: true,
-      message: `Ticket status transitioned to ${targetStatus}`,
-      data: { ticket: updated }
+      message: `Ticket status updated to ${status}`,
+      data: { ticket }
     });
   } catch (error) {
     logger.error('Error transitioning ticket status:', error);
@@ -187,27 +187,22 @@ const transitionStatus = async (req, res) => {
   }
 };
 
-// @desc    Assign technician and schedule service
+// @desc    Assign technician and schedule ticket
 // @route   POST /api/tickets/:id/schedule
 // @access  Private
 const scheduleTicket = async (req, res) => {
   try {
-    const { assigned_technician_id, scheduled_at, notes } = req.body;
-    if (!assigned_technician_id) {
-      return res.status(400).json({ success: false, message: 'assigned_technician_id is required' });
-    }
-
-    const updated = await ticketService.assignAndSchedule(
+    const ticket = await ticketService.assignAndSchedule(
       req.params.id,
       req.user.tenant_id,
       req.user.id,
-      { assigned_technician_id, scheduled_at, notes }
+      req.body
     );
 
     res.json({
       success: true,
-      message: 'Technician assigned and service scheduled successfully',
-      data: { ticket: updated }
+      message: 'Ticket scheduled and technician assigned successfully',
+      data: { ticket }
     });
   } catch (error) {
     logger.error('Error scheduling ticket:', error);
@@ -224,39 +219,7 @@ const scheduleTicket = async (req, res) => {
 // @access  Private
 const handleApproval = async (req, res) => {
   try {
-    const { action, approval_threshold_kes, notes } = req.body;
-    if (!action) {
-      return res.status(400).json({ success: false, message: "Action is required ('request', 'approve', or 'reject')" });
-    }
-
-    const updated = await ticketService.handleLandlordApproval(
-      req.params.id,
-      req.user.tenant_id,
-      req.user.id,
-      { action, approval_threshold_kes, notes }
-    );
-
-    res.json({
-      success: true,
-      message: `Landlord approval action '${action}' recorded successfully`,
-      data: { ticket: updated }
-    });
-  } catch (error) {
-    logger.error('Error handling landlord approval:', error);
-    const status = error.statusCode || 500;
-    res.status(status).json({
-      success: false,
-      message: error.message || 'Server error handling approval'
-    });
-  }
-};
-
-// @desc    Record labour, parts, and total costs
-// @route   POST /api/tickets/:id/costs
-// @access  Private
-const recordCosts = async (req, res) => {
-  try {
-    const updated = await ticketService.recordCosts(
+    const ticket = await ticketService.handleLandlordApproval(
       req.params.id,
       req.user.tenant_id,
       req.user.id,
@@ -265,11 +228,38 @@ const recordCosts = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Ticket costs updated successfully',
-      data: { ticket: updated }
+      message: `Landlord approval action '${req.body.action}' processed`,
+      data: { ticket }
     });
   } catch (error) {
-    logger.error('Error recording ticket costs:', error);
+    logger.error('Error handling landlord approval:', error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Server error handling landlord approval'
+    });
+  }
+};
+
+// @desc    Record labour, parts, travel and pricing unit economics
+// @route   POST /api/tickets/:id/costs
+// @access  Private
+const recordCosts = async (req, res) => {
+  try {
+    const ticket = await ticketService.recordCosts(
+      req.params.id,
+      req.user.tenant_id,
+      req.user.id,
+      req.body
+    );
+
+    res.json({
+      success: true,
+      message: 'Ticket unit economics and costs recorded successfully',
+      data: { ticket }
+    });
+  } catch (error) {
+    logger.error('Error recording costs:', error);
     const status = error.statusCode || 500;
     res.status(status).json({
       success: false,
@@ -278,7 +268,7 @@ const recordCosts = async (req, res) => {
   }
 };
 
-// @desc    Add photo or document attachment to ticket
+// @desc    Upload / add attachment to ticket (before/after photos)
 // @route   POST /api/tickets/:id/attachments
 // @access  Private
 const addAttachment = async (req, res) => {
@@ -293,7 +283,7 @@ const addAttachment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'file_path is required' });
     }
 
-    const name = filename || original_name || file_path.split('/').pop() || 'attachment';
+    const name = filename || original_name || file_path.split('/').pop() || 'photo.jpg';
     const attachmentId = await ticketModel.addAttachment({
       tenant_id: req.user.tenant_id,
       ticket_id: ticket.id,
@@ -335,7 +325,7 @@ const getAttachments = async (req, res) => {
   }
 };
 
-// @desc    Get dashboard metrics (open emergencies, SLA breaches, monthly counts)
+// @desc    Get basic dashboard metrics (open emergencies, SLA breaches, monthly counts)
 // @route   GET /api/tickets/dashboard/stats
 // @access  Private
 const getDashboardStats = async (req, res) => {
@@ -345,6 +335,126 @@ const getDashboardStats = async (req, res) => {
   } catch (error) {
     logger.error('Error fetching ticket dashboard stats:', error);
     res.status(500).json({ success: false, message: 'Server error fetching dashboard stats' });
+  }
+};
+
+// @desc    Get Sawa Repairs Company Plan 90-day targets scorecard and unit economics
+// @route   GET /api/tickets/dashboard/company-plan
+// @access  Private
+const getCompanyPlanMetrics = async (req, res) => {
+  try {
+    const metrics = await ticketService.getCompanyPlanMetrics(req.user.tenant_id);
+    res.json({
+      success: true,
+      data: metrics
+    });
+  } catch (error) {
+    logger.error('Error fetching company plan metrics:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching company plan metrics' });
+  }
+};
+
+// @desc    Get repeat customers qualified for Sawa Care conversion (>= 3 tickets in 90 days)
+// @route   GET /api/tickets/sawa-care/eligible
+// @access  Private
+const getRepeatCustomers = async (req, res) => {
+  try {
+    const days = parseInt(req.query.days, 10) || 90;
+    const eligible = await ticketService.getRepeatCustomers(req.user.tenant_id, days);
+    res.json({
+      success: true,
+      data: {
+        qualified_customers: eligible,
+        count: eligible.length,
+        criteria: `Customers with >= 3 tickets within ${days} days without active contract`
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching Sawa Care eligible customers:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching eligible customers' });
+  }
+};
+
+// @desc    List Sawa Care contracts
+// @route   GET /api/tickets/sawa-care/contracts
+// @access  Private
+const getSawaCareContracts = async (req, res) => {
+  try {
+    const contracts = await ticketService.getSawaCareContracts(req.user.tenant_id, req.query);
+    res.json({
+      success: true,
+      data: { contracts }
+    });
+  } catch (error) {
+    logger.error('Error fetching Sawa Care contracts:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching Sawa Care contracts' });
+  }
+};
+
+// @desc    Create Sawa Care contract
+// @route   POST /api/tickets/sawa-care/contracts
+// @access  Private
+const createSawaCareContract = async (req, res) => {
+  try {
+    const contract = await ticketService.createSawaCareContract(
+      req.user.tenant_id,
+      req.user.id,
+      req.body
+    );
+    res.status(201).json({
+      success: true,
+      message: 'Sawa Care contract created successfully',
+      data: { contract }
+    });
+  } catch (error) {
+    logger.error('Error creating Sawa Care contract:', error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Server error creating Sawa Care contract'
+    });
+  }
+};
+
+// @desc    Get single Sawa Care contract
+// @route   GET /api/tickets/sawa-care/contracts/:id
+// @access  Private
+const getSawaCareContract = async (req, res) => {
+  try {
+    const contract = await ticketService.getSawaCareContractById(req.params.id, req.user.tenant_id);
+    if (!contract) {
+      return res.status(404).json({ success: false, message: 'Sawa Care contract not found' });
+    }
+    res.json({ success: true, data: { contract } });
+  } catch (error) {
+    logger.error('Error fetching Sawa Care contract:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching Sawa Care contract' });
+  }
+};
+
+// @desc    Update Sawa Care contract
+// @route   PATCH /api/tickets/sawa-care/contracts/:id
+// @access  Private
+const updateSawaCareContract = async (req, res) => {
+  try {
+    const contract = await ticketService.updateSawaCareContract(
+      req.params.id,
+      req.user.tenant_id,
+      req.user.id,
+      req.body
+    );
+    res.json({
+      success: true,
+      message: 'Sawa Care contract updated successfully',
+      data: { contract }
+    });
+  } catch (error) {
+    logger.error('Error updating Sawa Care contract:', error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Server error updating Sawa Care contract'
+    });
   }
 };
 
@@ -387,5 +497,11 @@ module.exports = {
   addAttachment,
   getAttachments,
   getDashboardStats,
+  getCompanyPlanMetrics,
+  getRepeatCustomers,
+  getSawaCareContracts,
+  createSawaCareContract,
+  getSawaCareContract,
+  updateSawaCareContract,
   whatsAppIntake
 };

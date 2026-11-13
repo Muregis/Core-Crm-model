@@ -6,7 +6,9 @@ const {
   getProperty,
   createProperty,
   updateProperty,
-  deleteProperty
+  deleteProperty,
+  getMaintenanceMemory,
+  getLandlordMonthlyReport
 } = require('../controllers/propertyController');
 
 const router = express.Router();
@@ -23,9 +25,15 @@ const validate = (req, res, next) => {
 // All property routes require authentication
 router.use(protect);
 
+// Landlord monthly consolidated report (must precede /:id)
+router.get('/landlord/:customerId/monthly-report', getLandlordMonthlyReport);
+
 router.get('/', getProperties);
 
 router.get('/:id', getProperty);
+
+// Property Maintenance Memory (v2.1 §3, §4.1, §11)
+router.get('/:id/maintenance-memory', getMaintenanceMemory);
 
 router.post(
   '/',

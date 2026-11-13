@@ -78,6 +78,7 @@ class Database {
       this.createPropertiesTable();
       this.createTicketsTable();
       this.createTicketStatusHistoryTable();
+      this.createSawaCareContractsTable();
 
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN invoice_id INTEGER", () => {});
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN installment_id INTEGER", () => {});
@@ -85,6 +86,22 @@ class Database {
       this.db.run("ALTER TABLE parcels ADD COLUMN project_name TEXT DEFAULT 'Phase 1'", () => {});
       this.db.run("ALTER TABLE attachments ADD COLUMN ticket_id INTEGER", () => {});
       this.db.run("ALTER TABLE tasks ADD COLUMN ticket_id INTEGER", () => {});
+
+      this.db.run("ALTER TABLE tickets ADD COLUMN callout_fee_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN callout_fee_waived INTEGER DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN emergency_premium_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN travel_cost_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN labour_cost_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN labour_billed_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN parts_markup_percentage REAL DEFAULT 20", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN parts_billed_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN invoice_amount_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN gross_margin_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN margin_percentage REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN sla_response_due_at TEXT", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN responded_at TEXT", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN is_sla_breached INTEGER DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN is_warranty_claim INTEGER DEFAULT 0", () => {});
 
       this.db.run('SELECT 1', (err) => {
         if (err) logger.error('Schema ready check failed:', err);
@@ -982,6 +999,35 @@ class Database {
     this.db.run('CREATE INDEX IF NOT EXISTS idx_tsh_tenant_ticket ON ticket_status_history(tenant_id, ticket_id)');
   }
 
+  createSawaCareContractsTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS sawa_care_contracts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        customer_id INTEGER NOT NULL,
+        tier TEXT NOT NULL DEFAULT 'home',
+        status TEXT NOT NULL DEFAULT 'prospect',
+        start_date TEXT,
+        end_date TEXT,
+        monthly_retainer_kes REAL DEFAULT 0,
+        discount_percentage REAL DEFAULT 10,
+        included_properties_count INTEGER DEFAULT 1,
+        priority_sla_tier TEXT DEFAULT 'standard',
+        quarterly_inspection_scheduled TEXT,
+        notes TEXT,
+        created_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_sawa_care_tenant ON sawa_care_contracts(tenant_id)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_sawa_care_customer ON sawa_care_contracts(tenant_id, customer_id)');
+  }
+
+
   forTenant(tenantId) {
     if (!tenantId) {
       throw new Error('Tenant safety violation: tenantId is required for scoped database operations');
@@ -994,7 +1040,7 @@ class Database {
           'CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS',
           'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS', 'PARCELS', 'PARCEL_STATUS_HISTORY',
           'MATTERS', 'MATTER_TIME_ENTRIES', 'PARCEL_RESERVATIONS', 'DEAL_INSTALLMENTS', 'CONVEYANCING_MATTERS', 'PRODUCTS', 'INVOICES', 'INVOICE_ITEMS', 'EXPENDITURES', 'SITE_VISITS', 'SITE_VISIT_BOOKINGS',
-          'PROPERTIES', 'TICKETS', 'TICKET_STATUS_HISTORY'
+          'PROPERTIES', 'TICKETS', 'TICKET_STATUS_HISTORY', 'SAWA_CARE_CONTRACTS'
         ];
         const touchesTenantTable = tenantTables.some((t) => upper.includes(t));
         if (touchesTenantTable && !upper.includes('TENANT_ID')) {

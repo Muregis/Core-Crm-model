@@ -14,6 +14,12 @@ const {
   addAttachment,
   getAttachments,
   getDashboardStats,
+  getCompanyPlanMetrics,
+  getRepeatCustomers,
+  getSawaCareContracts,
+  createSawaCareContract,
+  getSawaCareContract,
+  updateSawaCareContract,
   whatsAppIntake
 } = require('../controllers/ticketController');
 
@@ -51,8 +57,33 @@ router.post(
 // All subsequent routes require authentication
 router.use(protect);
 
-// Dashboard stats endpoint (must precede /:id)
+// Dashboard endpoints (must precede /:id)
 router.get('/dashboard/stats', getDashboardStats);
+router.get('/dashboard/company-plan', getCompanyPlanMetrics);
+
+// Sawa Care Managed Contracts & Conversion endpoints (must precede /:id)
+router.get('/sawa-care/eligible', getRepeatCustomers);
+router.get('/sawa-care/contracts', getSawaCareContracts);
+router.post(
+  '/sawa-care/contracts',
+  [
+    body('customer_id')
+      .isInt({ min: 1 })
+      .withMessage('customer_id must be a valid integer ID'),
+    body('tier')
+      .optional()
+      .isIn(['home', 'portfolio', 'corporate'])
+      .withMessage("tier must be 'home', 'portfolio', or 'corporate'"),
+    body('status')
+      .optional()
+      .isIn(['prospect', 'active', 'paused', 'cancelled'])
+      .withMessage('Invalid contract status')
+  ],
+  validate,
+  createSawaCareContract
+);
+router.get('/sawa-care/contracts/:id', getSawaCareContract);
+router.patch('/sawa-care/contracts/:id', updateSawaCareContract);
 
 router.get('/', getTickets);
 
@@ -134,7 +165,7 @@ router.post(
   handleApproval
 );
 
-// Record costs
+// Record costs and unit economics
 router.post('/:id/costs', recordCosts);
 
 // Ticket attachments

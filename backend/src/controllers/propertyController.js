@@ -130,10 +130,54 @@ const deleteProperty = async (req, res) => {
   }
 };
 
+// @desc    Get complete property maintenance memory (health score, recurring alerts, lifetime spend, warranties, timeline)
+// @route   GET /api/properties/:id/maintenance-memory
+// @access  Private
+const getMaintenanceMemory = async (req, res) => {
+  try {
+    const memory = await propertyModel.getMaintenanceMemory(req.params.id, req.user.tenant_id);
+    if (!memory) {
+      return res.status(404).json({ success: false, message: 'Property not found' });
+    }
+    res.json({
+      success: true,
+      data: memory
+    });
+  } catch (error) {
+    logger.error('Error fetching maintenance memory:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching maintenance memory' });
+  }
+};
+
+// @desc    Get consolidated landlord monthly property report
+// @route   GET /api/properties/landlord/:customerId/monthly-report
+// @access  Private
+const getLandlordMonthlyReport = async (req, res) => {
+  try {
+    const report = await propertyModel.getLandlordMonthlyReport(
+      req.params.customerId,
+      req.user.tenant_id,
+      req.query.month || req.query.monthYear
+    );
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Landlord customer not found' });
+    }
+    res.json({
+      success: true,
+      data: report
+    });
+  } catch (error) {
+    logger.error('Error fetching landlord monthly report:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching landlord monthly report' });
+  }
+};
+
 module.exports = {
   getProperties,
   getProperty,
   createProperty,
   updateProperty,
-  deleteProperty
+  deleteProperty,
+  getMaintenanceMemory,
+  getLandlordMonthlyReport
 };

@@ -71,31 +71,50 @@ Powers **Sawa Repairs** (ticket-based property maintenance for landlords, Airbnb
 
 ### Core Capabilities
 
-1. **Multi-Tenant Property Portfolio (`/api/properties`)**:
+1. **Multi-Tenant Property Portfolio & Maintenance Memory (`/api/properties`)**:
    - Manage properties and rental units linked to landlord customers.
    - Track unit counts, physical addresses, notes, and open ticket counts per property.
-   - Enforce strict `tenant_id` isolation across all property listings and queries.
+   - **Property Maintenance Memory (`GET /api/properties/:id/maintenance-memory`)**: Sawa's core competitive moat (Product Document v2.1 §3 & §11). Provides lifetime repair spend, category breakdown, active 30-day workmanship warranties, chronological repair timeline with before/after photos, property health score (0–100), and recurring failure detection (flags categories with >= 2 repairs in 90 days as preventive maintenance alerts).
+   - **Landlord Monthly Consolidated Report (`GET /api/properties/landlord/:customerId/monthly-report`)**: Generates consolidated monthly statements for landlords/diaspora owners aggregating portfolio spend, labour vs parts vs callout fees, and tickets completed.
 
 2. **Full Lifecycle Service Tickets (`/api/tickets`)**:
    - Human-readable ticket numbers (`SAW-YYYY-XXXXX`, e.g. `SAW-2026-00041`).
    - Categorized by trade: `plumbing`, `electrical`, `roofing`, `painting`, `general`, `solar`, `other`.
-   - Prioritized by SLA: `emergency` (3h target), `standard`, `planned`.
+   - Prioritized by SLA: `emergency` (2–4h response SLA, default 3h timer), `standard` (24–48h), `planned` (3–5 working days).
    - Strict state machine lifecycle validation:
      `reported` ➔ `triaged` ➔ `scheduled` ➔ `in_progress` ➔ `awaiting_parts` ➔ `resolved` ➔ `verified` ➔ `closed` (with `reopened` rollback).
+   - Automatic 30-day workmanship warranty attached upon resolution (`warranty_until = resolved_at + 30 days`).
    - Auto-recorded audit trail in `ticket_status_history` and `activity_log`.
 
-3. **Technician Assignment & Scheduling**:
+3. **Unit Economics & Transparent Pricing Model (v2.1 §4.3 & §7.4)**:
+   - Diagnostic / call-out fee tracking (KSh 1,500–2,500; automatically waived when customer approves repair).
+   - Emergency callout premium (+30–50%).
+   - Transparent parts billing: wholesale parts cost + 15–25% margin markup.
+   - Internal technician labour cost vs billed labour rate.
+   - Per-ticket profitability tracking: Gross Revenue (`invoice_amount_kes`), Direct COGS (`labour_cost_kes + parts_cost_kes + travel_cost_kes`), Gross Margin KES, and Margin %.
+
+4. **Technician Assignment & Scheduling**:
    - Assign field technicians (`users` table) and set `scheduled_at`.
    - Automatically synchronizes with CRM `tasks` table (`task_type = 'field_service'`).
    - BullMQ worker sends daily digest of open tickets per technician.
 
-4. **Landlord Approval & Cost Tracking**:
+5. **Landlord Approval Workflow & Repeat Customer Conversion (v2.1 §5 & §12)**:
    - Set approval threshold (KES).
-   - Flag approval requirements when estimated or actual repair costs (labour hours + parts) exceed threshold.
+   - Flag approval requirements when repair estimate exceeds threshold.
    - Record landlord approvals/rejections with audit notes and timestamps.
-   - BullMQ reminder jobs for pending landlord approvals.
+   - **Sawa Care Conversion Engine (`GET /api/tickets/sawa-care/eligible`)**: Automatically tracks repeat customers generating 3+ tickets in 90 days for conversion to Sawa Care managed contracts.
+   - **Sawa Care Contracts Management (`/api/tickets/sawa-care/contracts`)**: Manages framework agreements (`home`, `portfolio`, `corporate` tiers) with locked discounted rates, priority SLA response, and scheduled quarterly preventive inspections.
 
-5. **WhatsApp-Friendly Intake Endpoint (`POST /api/tickets/whatsapp-intake`)**:
+6. **Executive Company Plan Scorecard (`GET /api/tickets/dashboard/company-plan`)**:
+   - Tracks real-time progress against Sawa Repairs 90-day execution targets (Product Document v2.1 §12):
+     - 50–100 completed tickets
+     - 20–30 paying customers
+     - 8–12 repeat customers (>= 3 tickets in 90d)
+     - 5–10 Sawa Care managed contracts
+     - Financials: Total Revenue, Total Direct COGS, Gross Margin KES, Margin %
+     - Service Quality: Emergency SLA compliance %, SLA breach counts, 30-day warranty rework claim rate.
+
+7. **WhatsApp-Friendly Intake Endpoint (`POST /api/tickets/whatsapp-intake`)**:
    - Accepts incoming structured payloads from WhatsApp bot/bridge:
      ```json
      {
@@ -112,9 +131,6 @@ Powers **Sawa Repairs** (ticket-based property maintenance for landlords, Airbnb
    - Automatically matches or provisions property, attaches before/after photos into `attachments`, and creates a ticket in `reported` status.
    - Enqueues emergency SLA reminder job.
 
-6. **Dashboard Stats (`GET /api/tickets/dashboard/stats`)**:
-   - Real-time overview of open emergencies, SLA breaches, monthly ticket volume, total repair costs, and breakdown by category and status.
-
 ### API Quick Reference
 
 | Method | Endpoint | Description | Access |
@@ -124,18 +140,26 @@ Powers **Sawa Repairs** (ticket-based property maintenance for landlords, Airbnb
 | `GET` | `/api/properties/:id` | Get single property with details | Authenticated |
 | `PATCH` | `/api/properties/:id` | Update property | Authenticated |
 | `DELETE` | `/api/properties/:id` | Delete property | Admin / Manager |
+| `GET` | `/api/properties/:id/maintenance-memory` | Get property maintenance memory, health score & recurring alerts | Authenticated |
+| `GET` | `/api/properties/landlord/:customerId/monthly-report` | Landlord monthly consolidated portfolio statement | Authenticated |
 | `GET` | `/api/tickets` | List tickets with filters (`property_id`, `status`, `category`, `priority`, `technician_id`, date range, search `q`) | Authenticated |
-| `POST` | `/api/tickets` | Create service ticket (auto-generates `SAW-YYYY-XXXXX`) | Authenticated |
+| `POST` | `/api/tickets` | Create service ticket (auto-generates `SAW-YYYY-XXXXX`, SLA response due date) | Authenticated |
 | `GET` | `/api/tickets/:id` | Get ticket with attachments, linked tasks & status history | Authenticated |
 | `PATCH` | `/api/tickets/:id` | Update ticket details | Authenticated |
 | `DELETE` | `/api/tickets/:id` | Delete ticket | Admin / Manager |
-| `PATCH` | `/api/tickets/:id/status` | Transition ticket status with state machine validation | Authenticated |
+| `PATCH` | `/api/tickets/:id/status` | Transition ticket status (with 30-day warranty & SLA breach checks) | Authenticated |
 | `POST` | `/api/tickets/:id/schedule` | Assign technician + schedule (syncs linked task) | Authenticated |
-| `POST` | `/api/tickets/:id/approval` | Request or record landlord approval (`request`, `approve`, `reject`) | Authenticated |
-| `POST` | `/api/tickets/:id/costs` | Record labour hours, parts cost, and total KES | Authenticated |
+| `POST` | `/api/tickets/:id/approval` | Request or record landlord approval (waives callout fee on approval) | Authenticated |
+| `POST` | `/api/tickets/:id/costs` | Record labour, parts markup, callout, gross margin & margin % | Authenticated |
 | `POST` | `/api/tickets/:id/attachments` | Add before/after repair photos or documents | Authenticated |
 | `GET` | `/api/tickets/:id/attachments` | List ticket attachments | Authenticated |
 | `GET` | `/api/tickets/dashboard/stats` | Dashboard metrics (open emergencies, SLA breaches, monthly counts) | Authenticated |
+| `GET` | `/api/tickets/dashboard/company-plan` | Sawa Repairs 90-day targets scorecard & unit economics | Authenticated |
+| `GET` | `/api/tickets/sawa-care/eligible` | List repeat customers qualified for Sawa Care (>=3 tickets in 90d) | Authenticated |
+| `GET` | `/api/tickets/sawa-care/contracts` | List Sawa Care managed contracts | Authenticated |
+| `POST` | `/api/tickets/sawa-care/contracts` | Create Sawa Care managed contract | Authenticated |
+| `GET` | `/api/tickets/sawa-care/contracts/:id` | Get Sawa Care contract details | Authenticated |
+| `PATCH` | `/api/tickets/sawa-care/contracts/:id` | Update Sawa Care contract | Authenticated |
 | `POST` | `/api/tickets/whatsapp-intake` | Webhook intake for WhatsApp chat bots | Public / Authenticated |
 
 ---

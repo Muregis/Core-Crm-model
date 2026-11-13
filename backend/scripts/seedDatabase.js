@@ -720,12 +720,16 @@ async function seed() {
         INSERT INTO tickets (
           tenant_id, ticket_number, property_id, customer_id, reported_by,
           category, priority, status, description, assigned_technician_id,
-          scheduled_at, started_at, labour_hours, parts_cost_kes, total_cost_kes, notes, created_by
+          scheduled_at, started_at, labour_hours, parts_cost_kes, total_cost_kes,
+          callout_fee_kes, labour_billed_kes, labour_cost_kes, parts_billed_kes,
+          invoice_amount_kes, gross_margin_kes, margin_percentage, notes, created_by
         ) VALUES (
           ?, 'SAW-2026-00002', ?, ?, 'Caretaker Omwamba (+254799001122)',
           'electrical', 'standard', 'in_progress',
           'Distribution board breaker tripping when microwave and oven run simultaneously',
           ?, '2026-11-14 09:00:00', '2026-11-14 09:15:00', 1.5, 3200, 5450,
+          2000, 3500, 1500, 3840,
+          7340, 2640, 36.0,
           'Load testing circuit wiring and replacing 20A breaker', ?
         )
       `, [sawaTenantId, prop2Id || targetProp1, sawaCustId, sawaTechId, sawaAdminId]);
@@ -739,6 +743,56 @@ async function seed() {
         INSERT INTO ticket_status_history (tenant_id, ticket_id, from_status, to_status, changed_by, note)
         VALUES (?, ?, 'reported', 'in_progress', ?, 'Juma on site testing distribution board')
       `, [sawaTenantId, t2.insertId, sawaAdminId]);
+
+      // Ticket 3: Resolved Plumbing with Workmanship Warranty (on Prop 1 -> triggers recurring plumbing alert)
+      const warrantyExp = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
+      const resolvedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+      const t3 = await db.query(`
+        INSERT INTO tickets (
+          tenant_id, ticket_number, property_id, customer_id, reported_by,
+          category, priority, status, description, assigned_technician_id,
+          scheduled_at, started_at, resolved_at, warranty_until,
+          callout_fee_kes, callout_fee_waived, labour_hours, labour_cost_kes, labour_billed_kes,
+          parts_cost_kes, parts_markup_percentage, parts_billed_kes, travel_cost_kes,
+          invoice_amount_kes, total_cost_kes, gross_margin_kes, margin_percentage, notes, created_by
+        ) VALUES (
+          ?, 'SAW-2026-00003', ?, ?, 'Guest John (+254711998877)',
+          'plumbing', 'standard', 'resolved',
+          'Master bathroom mixer tap leaking under counter and dripping into cabinet',
+          ?, '2026-11-08 11:00:00', '2026-11-08 11:10:00', ?, ?,
+          2000, 1, 2.0, 1500, 3500,
+          2500, 20.0, 3000, 500,
+          6500, 4500, 2000, 30.8,
+          'Replaced ceramic cartridge and resealed silicon joint. 30-day warranty active.', ?
+        )
+      `, [sawaTenantId, targetProp1, sawaCustId, sawaTechId, resolvedAt, warrantyExp, sawaAdminId]);
+
+      await db.query(`
+        INSERT INTO ticket_status_history (tenant_id, ticket_id, from_status, to_status, changed_by, note)
+        VALUES (?, ?, null, 'reported', ?, 'Reported by guest via WhatsApp')
+      `, [sawaTenantId, t3.insertId, sawaAdminId]);
+
+      await db.query(`
+        INSERT INTO ticket_status_history (tenant_id, ticket_id, from_status, to_status, changed_by, note)
+        VALUES (?, ?, 'reported', 'resolved', ?, 'Repaired and tested water tightness')
+      `, [sawaTenantId, t3.insertId, sawaAdminId]);
+
+      // Seed a Sawa Care Contract for Peter Ndung'u
+      const contractCount = await db.query('SELECT COUNT(*) as cnt FROM sawa_care_contracts WHERE tenant_id = ?', [sawaTenantId]);
+      if (contractCount[0].cnt === 0) {
+        await db.query(`
+          INSERT INTO sawa_care_contracts (
+            tenant_id, customer_id, tier, status, start_date, end_date,
+            monthly_retainer_kes, discount_percentage, included_properties_count,
+            priority_sla_tier, quarterly_inspection_scheduled, notes, created_by
+          ) VALUES (
+            ?, ?, 'portfolio', 'active', '2026-11-01', '2027-10-31',
+            7500.00, 15.00, 2, 'priority_2h', '2027-02-15',
+            'Sawa Care Portfolio contract covering Kilimani Apt 4B and Riverside Townhouse', ?
+          )
+        `, [sawaTenantId, sawaCustId, sawaAdminId]);
+        console.log('Seeded Sawa Care Portfolio contract for Peter Ndung\'u.');
+      }
 
       console.log('Seeded demo tickets & field service tasks for Sawa Repairs.');
     }

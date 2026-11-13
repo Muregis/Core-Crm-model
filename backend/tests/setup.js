@@ -58,6 +58,7 @@ afterEach(async () => {
     'token_blocklist',
     'refresh_tokens',
     'tenant_credentials',
+    'sawa_care_contracts',
     'ticket_status_history',
     'tickets',
     'properties',
