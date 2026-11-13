@@ -29,6 +29,7 @@ export const ticketService = {
   getClientExperienceMetrics: () =>
     api.get('/tickets/dashboard/client-experience-metrics'),
   getCompanyPlanMetrics: () => api.get('/tickets/dashboard/company-plan'),
+  getFinancialModel: () => api.get('/tickets/dashboard/financial-model'),
 
   // Sawa Care contracts & conversion
   getRepeatCustomers: () => api.get('/tickets/sawa-care/eligible'),

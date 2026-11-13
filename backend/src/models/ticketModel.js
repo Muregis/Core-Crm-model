@@ -77,7 +77,17 @@ class TicketModel {
       warranty_until = null,
       notes = null,
       internal_notes = null,
-      created_by = null
+      created_by = null,
+      callout_fee_applied = 2000,
+      emergency_premium_applied = 1000,
+      labour_rate_applied = 1200,
+      parts_markup_pct_applied = 20,
+      travel_allowance_applied = 500,
+      pricing_config_version = 'v2.0',
+      quote_expires_at = null,
+      parts_deposit_required_kes = 0,
+      parts_deposit_collected_kes = 0,
+      is_sla_warning = 0
     } = data;
 
     const finalNumber = ticket_number || (await this.generateTicketNumber(tenant_id));
@@ -96,7 +106,11 @@ class TicketModel {
         sla_response_due_at, responded_at, is_sla_breached, is_warranty_claim,
         tracking_token, approval_token, emergency_auto_approve_limit_kes,
         first_time_fix, first_response_minutes, on_site_minutes,
-        warranty_until, notes, internal_notes, created_by
+        warranty_until, notes, internal_notes, created_by,
+        callout_fee_applied, emergency_premium_applied, labour_rate_applied,
+        parts_markup_pct_applied, travel_allowance_applied, pricing_config_version,
+        quote_expires_at, parts_deposit_required_kes, parts_deposit_collected_kes,
+        is_sla_warning
       ) VALUES (
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
@@ -109,7 +123,11 @@ class TicketModel {
         ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?
       )`,
       [
         tenant_id,
@@ -157,7 +175,17 @@ class TicketModel {
         warranty_until || null,
         notes || null,
         internal_notes || null,
-        created_by ? Number(created_by) : null
+        created_by ? Number(created_by) : null,
+        Number(callout_fee_applied) || 2000,
+        Number(emergency_premium_applied) || 0,
+        Number(labour_rate_applied) || 1200,
+        Number(parts_markup_pct_applied) || 20,
+        Number(travel_allowance_applied) || 500,
+        pricing_config_version || 'v2.0',
+        quote_expires_at || null,
+        Number(parts_deposit_required_kes) || 0,
+        Number(parts_deposit_collected_kes) || 0,
+        is_sla_warning ? 1 : 0
       ]
     );
 
@@ -595,7 +623,11 @@ class TicketModel {
       'responded_at', 'is_sla_breached', 'is_warranty_claim',
       'tracking_token', 'approval_token', 'emergency_auto_approve_limit_kes',
       'first_time_fix', 'first_response_minutes', 'on_site_minutes',
-      'warranty_until', 'notes', 'internal_notes'
+      'warranty_until', 'notes', 'internal_notes',
+      'callout_fee_applied', 'emergency_premium_applied', 'labour_rate_applied',
+      'parts_markup_pct_applied', 'travel_allowance_applied', 'pricing_config_version',
+      'quote_expires_at', 'parts_deposit_required_kes', 'parts_deposit_collected_kes',
+      'is_sla_warning'
     ];
 
     for (const key of allowedFields) {

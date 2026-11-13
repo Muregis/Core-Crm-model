@@ -29,7 +29,8 @@ import {
   Sun,
   Layers,
   Sparkles,
-  Info
+  Info,
+  TrendingUp
 } from 'lucide-react'
 import { ticketService } from '../services/ticketService'
 import { propertyService } from '../services/propertyService'
@@ -37,6 +38,7 @@ import { customerService } from '../services/customerService'
 import { userService } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
 import EmptyState from '../components/EmptyState'
+import PricingFinancialModelModal from '../components/PricingFinancialModelModal'
 import toast from 'react-hot-toast'
 
 const CATEGORY_ICONS = {
@@ -110,6 +112,7 @@ export default function Tickets() {
 
   // Modals & Drawers
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false)
   const [isScheduleOpen, setIsScheduleOpen] = useState(false)
   const [isApprovalOpen, setIsApprovalOpen] = useState(false)
   const [isCostsOpen, setIsCostsOpen] = useState(false)
@@ -401,13 +404,22 @@ export default function Tickets() {
         </div>
 
         {isAdmin && (
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-sm shadow-sm transition-colors focus:ring-2 focus:ring-primary-500 focus:outline-none"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            Open Service Ticket
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsPricingModalOpen(true)}
+              className="inline-flex items-center justify-center px-3.5 py-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium text-sm shadow-sm transition-colors focus:ring-2 focus:ring-primary-500 focus:outline-none"
+            >
+              <TrendingUp className="w-4 h-4 mr-1.5 text-primary-600 dark:text-primary-400" />
+              Financial Model & Drivers
+            </button>
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-sm shadow-sm transition-colors focus:ring-2 focus:ring-primary-500 focus:outline-none"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Open Service Ticket
+            </button>
+          </div>
         )}
       </div>
 
@@ -1413,6 +1425,12 @@ export default function Tickets() {
           </div>
         </div>
       )}
+
+      {/* Pricing Drivers & Financial Model v2.0 Modal */}
+      <PricingFinancialModelModal
+        isOpen={isPricingModalOpen}
+        onClose={() => setIsPricingModalOpen(false)}
+      />
     </div>
   )
 }

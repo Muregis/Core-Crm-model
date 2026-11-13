@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const ticketModel = require('../models/ticketModel');
 const propertyModel = require('../models/propertyModel');
+const pricingConfigModel = require('../models/pricingConfigModel');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const {
@@ -55,17 +56,17 @@ class TicketService {
     return Array.isArray(allowed) && allowed.includes(targetStatus);
   }
 
-  calculateSlaDeadline(priority, fromDate = new Date()) {
+  calculateSlaDeadline(priority, fromDate = new Date(), drivers = {}) {
     const base = new Date(fromDate);
     if (priority === 'emergency') {
-      // Configurable interim SLA (default 6h; target 2–6h window for Nairobi logistics)
-      return new Date(base.getTime() + EMERGENCY_SLA_HOURS * 60 * 60 * 1000).toISOString();
+      const breachHours = drivers.sla_emergency_breach_hours || EMERGENCY_SLA_HOURS || 6;
+      return new Date(base.getTime() + breachHours * 60 * 60 * 1000).toISOString();
     } else if (priority === 'planned') {
-      // 96 hours (4 working days: 3–5 working days)
-      return new Date(base.getTime() + 96 * 60 * 60 * 1000).toISOString();
+      const breachHours = drivers.sla_planned_breach_hours || 96;
+      return new Date(base.getTime() + breachHours * 60 * 60 * 1000).toISOString();
     } else {
-      // Standard: 36 hours (24–48 hours)
-      return new Date(base.getTime() + 36 * 60 * 60 * 1000).toISOString();
+      const breachHours = drivers.sla_standard_breach_hours || 36;
+      return new Date(base.getTime() + breachHours * 60 * 60 * 1000).toISOString();
     }
   }
 
@@ -153,14 +154,38 @@ class TicketService {
       }
     }
 
-    // Compute SLA response deadline
-    const slaDueAt = this.calculateSlaDeadline(normPriority);
+    // Fetch active pricing and SLA drivers for tenant
+    const drivers = await pricingConfigModel.getDriversMap(tenantId);
 
-    // Default callout fee (v2.1 §4.3: KSh 1,500–2,500)
-    let finalCalloutFee = callout_fee_kes !== undefined ? Number(callout_fee_kes) : 2000;
-    let finalEmergencyPremium = emergency_premium_kes !== undefined
-      ? Number(emergency_premium_kes)
-      : (normPriority === 'emergency' ? 1000 : 0);
+    // Compute SLA response deadline from dynamic drivers
+    const slaDueAt = this.calculateSlaDeadline(normPriority, new Date(), drivers);
+
+    // Dynamic quote expiration date
+    const quoteDays = drivers.quote_validity_days || 7;
+    const quoteExpiresAt = new Date(Date.now() + quoteDays * 24 * 60 * 60 * 1000).toISOString();
+
+    // Snapshot applied drivers onto ticket (immutable historical pricing)
+    const calloutFeeApplied = ticketData.callout_fee_applied !== undefined
+      ? Number(ticketData.callout_fee_applied)
+      : (callout_fee_kes !== undefined ? Number(callout_fee_kes) : (drivers.callout_fee || 2000));
+
+    const emergencyPremiumApplied = ticketData.emergency_premium_applied !== undefined
+      ? Number(ticketData.emergency_premium_applied)
+      : (emergency_premium_kes !== undefined
+          ? Number(emergency_premium_kes)
+          : (normPriority === 'emergency' ? (drivers.emergency_premium || 1000) : 0));
+
+    const labourRateApplied = ticketData.labour_rate_applied !== undefined
+      ? Number(ticketData.labour_rate_applied)
+      : (normPriority === 'emergency' ? (drivers.labour_rate_emergency || 1500) : (drivers.labour_rate_standard || 1200));
+
+    const partsMarkupPctApplied = ticketData.parts_markup_pct_applied !== undefined
+      ? Number(ticketData.parts_markup_pct_applied)
+      : (ticketData.parts_markup_percentage !== undefined ? Number(ticketData.parts_markup_percentage) : (drivers.parts_markup_pct || 20));
+
+    const travelAllowanceApplied = ticketData.travel_allowance_applied !== undefined
+      ? Number(ticketData.travel_allowance_applied)
+      : (normPriority === 'emergency' ? (drivers.travel_allowance_emergency || 800) : (drivers.travel_allowance_base || 500));
 
     const ticket = await ticketModel.create({
       tenant_id: tenantId,
@@ -175,8 +200,19 @@ class TicketService {
       scheduled_at: scheduled_at || null,
       landlord_approval_required: landlord_approval_required ? 1 : 0,
       approval_threshold_kes: Number(approval_threshold_kes) || 0,
-      callout_fee_kes: finalCalloutFee,
-      emergency_premium_kes: finalEmergencyPremium,
+      callout_fee_kes: calloutFeeApplied,
+      emergency_premium_kes: emergencyPremiumApplied,
+      travel_cost_kes: ticketData.travel_cost_kes !== undefined ? Number(ticketData.travel_cost_kes) : 0,
+      callout_fee_applied: calloutFeeApplied,
+      emergency_premium_applied: emergencyPremiumApplied,
+      labour_rate_applied: labourRateApplied,
+      parts_markup_pct_applied: partsMarkupPctApplied,
+      travel_allowance_applied: travelAllowanceApplied,
+      pricing_config_version: 'v2.0',
+      quote_expires_at: quoteExpiresAt,
+      parts_deposit_required_kes: Number(ticketData.parts_deposit_required_kes || 0),
+      parts_deposit_collected_kes: Number(ticketData.parts_deposit_collected_kes || 0),
+      is_sla_warning: 0,
       sla_response_due_at: slaDueAt,
       is_warranty_claim: is_warranty_claim ? 1 : 0,
       notes: notes || null,
@@ -218,15 +254,16 @@ class TicketService {
       }
     }
 
-    // Enqueue SLA reminder if priority is emergency
+    // Enqueue SLA reminder if priority is emergency (timed at warning threshold)
     if (ticket.priority === 'emergency') {
+      const emergencyWarningHours = drivers.sla_emergency_warning_hours || 4;
       try {
         await enqueueSlaReminder({
           tenantId,
           ticketId: ticket.id,
           ticketNumber: ticket.ticket_number,
           priority: ticket.priority,
-          delayMs: EMERGENCY_SLA_HOURS * 60 * 60 * 1000
+          delayMs: emergencyWarningHours * 60 * 60 * 1000
         });
       } catch (qErr) {
         logger.warn('Failed to enqueue SLA reminder:', qErr.message);
@@ -616,6 +653,7 @@ class TicketService {
       travel_cost_kes,
       total_cost_kes,
       invoice_amount_kes,
+      parts_deposit_collected_kes,
       notes
     } = costData;
 
@@ -626,57 +664,81 @@ class TicketService {
       throw err;
     }
 
-    // 1. Labour calculations
+    const drivers = await pricingConfigModel.getDriversMap(tenantId);
+
+    // 1. Labour calculations using snapshotted driver rate unless overridden
     const finalLabourHours = labour_hours !== undefined ? Number(labour_hours) : Number(ticket.labour_hours || 0);
-    const labourRate = hourly_rate_kes !== undefined ? Number(hourly_rate_kes) : 0;
-    const finalLabourCost = labour_cost_kes !== undefined ? Number(labour_cost_kes) : Number(ticket.labour_cost_kes || 0);
+    const labourRate = hourly_rate_kes !== undefined
+      ? Number(hourly_rate_kes)
+      : (Number(ticket.labour_rate_applied) || (ticket.priority === 'emergency' ? (drivers.labour_rate_emergency || 1500) : (drivers.labour_rate_standard || 1200)));
+
     let finalLabourBilled = labour_billed_kes !== undefined
       ? Number(labour_billed_kes)
-      : (labourRate > 0 ? finalLabourHours * labourRate : Number(ticket.labour_billed_kes || 0));
+      : (labourRate > 0 && finalLabourHours > 0 ? Number((finalLabourHours * labourRate).toFixed(2)) : Number(ticket.labour_billed_kes || 0));
 
-    // 2. Parts calculations (wholesale cost + 15–25% margin markup per v2.1 §4.3)
+    // Technician labour payout: 50% split (Model v2.0 §4.3)
+    const techSplitPct = drivers.technician_labour_split_pct || 50;
+    const finalLabourCost = labour_cost_kes !== undefined
+      ? Number(labour_cost_kes)
+      : (finalLabourBilled > 0 ? Number((finalLabourBilled * (techSplitPct / 100)).toFixed(2)) : Number(ticket.labour_cost_kes || 0));
+
+    // 2. Parts calculations using snapshotted markup (+20% handling fee) unless overridden
     const finalPartsCost = parts_cost_kes !== undefined ? Number(parts_cost_kes) : Number(ticket.parts_cost_kes || 0);
     const finalPartsMarkup = parts_markup_percentage !== undefined
       ? Number(parts_markup_percentage)
-      : Number(ticket.parts_markup_percentage || 20);
+      : (Number(ticket.parts_markup_pct_applied) || Number(ticket.parts_markup_percentage) || (drivers.parts_markup_pct || 20));
     const finalPartsBilled = parts_billed_kes !== undefined
       ? Number(parts_billed_kes)
-      : (finalPartsCost > 0 ? finalPartsCost * (1 + finalPartsMarkup / 100) : 0);
+      : (finalPartsCost > 0 ? Number((finalPartsCost * (1 + finalPartsMarkup / 100)).toFixed(2)) : 0);
 
-    // 3. Callout & Travel
-    const finalCalloutFee = callout_fee_kes !== undefined ? Number(callout_fee_kes) : Number(ticket.callout_fee_kes || 0);
+    // 3. Callout & Travel Allowance
+    const finalCalloutFee = callout_fee_kes !== undefined
+      ? Number(callout_fee_kes)
+      : (ticket.callout_fee_applied !== undefined ? Number(ticket.callout_fee_applied) : Number(ticket.callout_fee_kes || (drivers.callout_fee || 2000)));
+
     const isCalloutWaived = callout_fee_waived !== undefined ? Boolean(callout_fee_waived) : Boolean(ticket.callout_fee_waived);
     const effectiveCallout = isCalloutWaived ? 0 : finalCalloutFee;
 
     const finalEmergencyPremium = emergency_premium_kes !== undefined
       ? Number(emergency_premium_kes)
-      : Number(ticket.emergency_premium_kes || 0);
-    const finalTravelCost = travel_cost_kes !== undefined ? Number(travel_cost_kes) : Number(ticket.travel_cost_kes || 0);
+      : (ticket.emergency_premium_applied !== undefined ? Number(ticket.emergency_premium_applied) : Number(ticket.emergency_premium_kes || 0));
+
+    const finalTravelCost = travel_cost_kes !== undefined
+      ? Number(travel_cost_kes)
+      : Number(ticket.travel_cost_kes || 0);
 
     // 4. Invoiced Amount (Gross Revenue)
     let finalInvoiceAmount;
     if (invoice_amount_kes !== undefined && invoice_amount_kes !== null) {
       finalInvoiceAmount = Number(invoice_amount_kes);
     } else {
-      finalInvoiceAmount = effectiveCallout + finalEmergencyPremium + finalLabourBilled + finalPartsBilled;
+      finalInvoiceAmount = Math.round(effectiveCallout + finalEmergencyPremium + finalLabourBilled + finalPartsBilled);
     }
 
     // 5. Total Cost (backward compatible with labour_hours * hourly_rate + parts_cost if total_cost_kes not given)
     let computedTotalCost;
     if (total_cost_kes !== undefined && total_cost_kes !== null) {
       computedTotalCost = Number(total_cost_kes);
-    } else if (labourRate > 0 || finalPartsCost > 0) {
+    } else if (hourly_rate_kes !== undefined && (costData.labour_billed_kes === undefined || costData.labour_cost_kes === undefined)) {
       computedTotalCost = (finalLabourHours * labourRate) + finalPartsCost;
     } else {
       computedTotalCost = finalLabourCost + finalPartsCost + finalTravelCost;
     }
 
-    // 6. Direct COGS and Gross Margin
+    // 6. Direct Variable COGS & Gross Margin
     const directCogs = finalLabourCost + finalPartsCost + finalTravelCost;
-    const grossMargin = finalInvoiceAmount > 0 && directCogs > 0 ? finalInvoiceAmount - directCogs : (finalInvoiceAmount - computedTotalCost);
+    const grossMargin = finalInvoiceAmount > 0 && directCogs > 0
+      ? Number((finalInvoiceAmount - directCogs).toFixed(2))
+      : (finalInvoiceAmount > 0 ? Number((finalInvoiceAmount - computedTotalCost).toFixed(2)) : 0);
     const marginPercentage = finalInvoiceAmount > 0
       ? Number(((grossMargin / finalInvoiceAmount) * 100).toFixed(1))
       : 0;
+
+    // 7. Parts Working Capital constraint: 100% parts deposit policy
+    const partsDepositRequired = finalPartsBilled > 0 ? finalPartsBilled : 0;
+    const partsDepositCollected = parts_deposit_collected_kes !== undefined
+      ? Number(parts_deposit_collected_kes)
+      : Number(ticket.parts_deposit_collected_kes || 0);
 
     const updates = {
       labour_hours: finalLabourHours,
@@ -692,7 +754,9 @@ class TicketService {
       total_cost_kes: computedTotalCost,
       invoice_amount_kes: finalInvoiceAmount,
       gross_margin_kes: grossMargin,
-      margin_percentage: marginPercentage
+      margin_percentage: marginPercentage,
+      parts_deposit_required_kes: partsDepositRequired,
+      parts_deposit_collected_kes: partsDepositCollected
     };
 
     if (notes) {
@@ -792,7 +856,16 @@ class TicketService {
       ? String(priority).toLowerCase()
       : 'standard';
 
-    const slaDueAt = this.calculateSlaDeadline(normPriority);
+    const drivers = await pricingConfigModel.getDriversMap(tenantId);
+    const slaDueAt = this.calculateSlaDeadline(normPriority, new Date(), drivers);
+    const quoteDays = drivers.quote_validity_days || 7;
+    const quoteExpiresAt = new Date(Date.now() + quoteDays * 24 * 60 * 60 * 1000).toISOString();
+
+    const calloutFeeApplied = drivers.callout_fee || 2000;
+    const emergencyPremiumApplied = normPriority === 'emergency' ? (drivers.emergency_premium || 1000) : 0;
+    const labourRateApplied = normPriority === 'emergency' ? (drivers.labour_rate_emergency || 1500) : (drivers.labour_rate_standard || 1200);
+    const partsMarkupPctApplied = drivers.parts_markup_pct || 20;
+    const travelAllowanceApplied = normPriority === 'emergency' ? (drivers.travel_allowance_emergency || 800) : (drivers.travel_allowance_base || 500);
 
     const ticket = await ticketModel.create({
       tenant_id: tenantId,
@@ -803,8 +876,19 @@ class TicketService {
       priority: normPriority,
       status: 'reported',
       description: description.trim(),
-      callout_fee_kes: 2000,
-      emergency_premium_kes: normPriority === 'emergency' ? 1000 : 0,
+      callout_fee_kes: calloutFeeApplied,
+      emergency_premium_kes: emergencyPremiumApplied,
+      travel_cost_kes: payload.travel_cost_kes !== undefined ? Number(payload.travel_cost_kes) : 0,
+      callout_fee_applied: calloutFeeApplied,
+      emergency_premium_applied: emergencyPremiumApplied,
+      labour_rate_applied: labourRateApplied,
+      parts_markup_pct_applied: partsMarkupPctApplied,
+      travel_allowance_applied: travelAllowanceApplied,
+      pricing_config_version: 'v2.0',
+      quote_expires_at: quoteExpiresAt,
+      parts_deposit_required_kes: 0,
+      parts_deposit_collected_kes: 0,
+      is_sla_warning: 0,
       sla_response_due_at: slaDueAt,
       notes: unitNumber ? `Unit/House: ${unitNumber}` : null,
       created_by: null

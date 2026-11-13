@@ -65,6 +65,7 @@ const getTickets = async (req, res) => {
         delete t.margin_percentage;
         delete t.parts_markup_percentage;
         delete t.labour_cost_kes;
+        delete t.parts_markup_pct_applied;
       });
     }
 
@@ -108,6 +109,7 @@ const getTicket = async (req, res) => {
       delete ticket.margin_percentage;
       delete ticket.parts_markup_percentage;
       delete ticket.labour_cost_kes;
+      delete ticket.parts_markup_pct_applied;
     }
 
     res.json({ success: true, data: { ticket } });

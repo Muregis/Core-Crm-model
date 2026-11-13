@@ -80,6 +80,8 @@ class Database {
       this.createTicketStatusHistoryTable();
       this.createSawaCareContractsTable();
       this.createPreventiveInspectionsTable();
+      this.createPricingConfigTable();
+      this.createPricingConfigHistoryTable();
 
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN invoice_id INTEGER", () => {});
       this.db.run("ALTER TABLE mpesa_transactions ADD COLUMN installment_id INTEGER", () => {});
@@ -115,6 +117,20 @@ class Database {
       this.db.run("ALTER TABLE properties ADD COLUMN airbnb_managed INTEGER DEFAULT 0", () => {});
       this.db.run("ALTER TABLE properties ADD COLUMN last_preventive_inspection_at TEXT", () => {});
       this.db.run("ALTER TABLE properties ADD COLUMN next_preventive_inspection_due TEXT", () => {});
+
+      // Migration 009: Snapshot columns and working capital
+      this.db.run("ALTER TABLE tickets ADD COLUMN callout_fee_applied REAL DEFAULT 2000", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN emergency_premium_applied REAL DEFAULT 1000", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN labour_rate_applied REAL DEFAULT 1200", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN parts_markup_pct_applied REAL DEFAULT 20", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN travel_allowance_applied REAL DEFAULT 500", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN pricing_config_version TEXT DEFAULT 'v2.0'", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN quote_expires_at TEXT", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN parts_deposit_required_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN parts_deposit_collected_kes REAL DEFAULT 0", () => {});
+      this.db.run("ALTER TABLE tickets ADD COLUMN is_sla_warning INTEGER DEFAULT 0", () => {});
+
+      this.seedPricingConfigDrivers();
 
       this.db.run('SELECT 1', (err) => {
         if (err) logger.error('Schema ready check failed:', err);
@@ -1067,6 +1083,91 @@ class Database {
     this.db.run('CREATE INDEX IF NOT EXISTS idx_sawa_care_customer ON sawa_care_contracts(tenant_id, customer_id)');
   }
 
+  createPricingConfigTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS pricing_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value REAL NOT NULL,
+        unit TEXT NOT NULL DEFAULT 'KES',
+        category TEXT NOT NULL DEFAULT 'pricing',
+        description TEXT,
+        effective_from TEXT NOT NULL,
+        effective_to TEXT,
+        updated_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_pc_tenant_key ON pricing_config(tenant_id, key)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_pc_dates ON pricing_config(effective_from, effective_to)');
+  }
+
+  createPricingConfigHistoryTable() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS pricing_config_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        config_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        old_value REAL,
+        new_value REAL NOT NULL,
+        old_effective_to TEXT,
+        new_effective_from TEXT NOT NULL,
+        changed_by INTEGER,
+        reason TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+      )
+    `);
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_pch_tenant_key ON pricing_config_history(tenant_id, key)');
+  }
+
+  seedPricingConfigDrivers() {
+    const defaultDrivers = [
+      { key: 'callout_fee', value: 2000, unit: 'KES', category: 'pricing', desc: 'Standard diagnostic callout fee' },
+      { key: 'emergency_premium', value: 1000, unit: 'KES', category: 'pricing', desc: 'Emergency dispatch surcharge' },
+      { key: 'labour_rate_standard', value: 1200, unit: 'KES/hr', category: 'pricing', desc: 'Standard labour hourly billing rate' },
+      { key: 'labour_rate_emergency', value: 1500, unit: 'KES/hr', category: 'pricing', desc: 'Emergency labour hourly billing rate' },
+      { key: 'parts_markup_pct', value: 20, unit: 'pct', category: 'pricing', desc: 'Handling markup on wholesale parts' },
+      { key: 'travel_allowance_base', value: 500, unit: 'KES', category: 'pricing', desc: 'Base technician transit reimbursement' },
+      { key: 'travel_allowance_emergency', value: 800, unit: 'KES', category: 'pricing', desc: 'Rapid emergency transit reimbursement' },
+      { key: 'technician_labour_split_pct', value: 50, unit: 'pct', category: 'pricing', desc: 'Technician payout share of billed labour' },
+      { key: 'mpesa_fee_pct', value: 1.2, unit: 'pct', category: 'financial', desc: 'M-Pesa STK push collection fee' },
+      { key: 'quote_validity_days', value: 7, unit: 'days', category: 'pricing', desc: 'Days before repair quote estimate expires' },
+      { key: 'care_escalation_index', value: 0, unit: 'pct', category: 'pricing', desc: 'Annual Sawa Care contract price adjustment index' },
+      { key: 'sla_emergency_target_hours', value: 3, unit: 'hours', category: 'sla', desc: 'Emergency response SLA public target' },
+      { key: 'sla_emergency_warning_hours', value: 4, unit: 'hours', category: 'sla', desc: 'Yellow warning alert threshold for emergencies' },
+      { key: 'sla_emergency_breach_hours', value: 6, unit: 'hours', category: 'sla', desc: 'Hard breach limit for emergency SLA' },
+      { key: 'sla_standard_warning_hours', value: 24, unit: 'hours', category: 'sla', desc: 'Yellow warning alert for standard tickets' },
+      { key: 'sla_standard_breach_hours', value: 36, unit: 'hours', category: 'sla', desc: 'Hard breach limit for standard tickets' },
+      { key: 'sla_planned_warning_hours', value: 72, unit: 'hours', category: 'sla', desc: 'Yellow warning alert for planned work' },
+      { key: 'sla_planned_breach_hours', value: 96, unit: 'hours', category: 'sla', desc: 'Hard breach limit for planned work' },
+      // Fixed OpEx drivers
+      { key: 'fixed_ops_coordinator_kes', value: 50000, unit: 'KES/mo', category: 'cost', desc: 'Ops Coordinator monthly compensation' },
+      { key: 'fixed_lead_inspector_kes', value: 40000, unit: 'KES/mo', category: 'cost', desc: 'Lead QA inspector retainer' },
+      { key: 'fixed_cloud_hosting_kes', value: 8000, unit: 'KES/mo', category: 'cost', desc: 'Hosting, database and server infrastructure' },
+      { key: 'fixed_whatsapp_telephony_kes', value: 5000, unit: 'KES/mo', category: 'cost', desc: 'Meta Cloud API & telephony' },
+      { key: 'fixed_transport_buffer_kes', value: 12000, unit: 'KES/mo', category: 'cost', desc: 'Fuel and transport allowance buffer' },
+      { key: 'fixed_tools_safety_kes', value: 10000, unit: 'KES/mo', category: 'cost', desc: 'Tools and safety gear consumables' },
+      { key: 'fixed_marketing_spend_kes', value: 5000, unit: 'KES/mo', category: 'cost', desc: 'Facebook/community outbound marketing' },
+      { key: 'fixed_insurance_premium_kes', value: 8000, unit: 'KES/mo', category: 'cost', desc: 'Public liability & indemnity insurance' },
+      { key: 'parts_float_required_kes', value: 50000, unit: 'KES', category: 'financial', desc: 'Working capital parts purchasing float' }
+    ];
+
+    const effectiveDate = '2026-01-01';
+    for (const d of defaultDrivers) {
+      this.db.run(
+        `INSERT OR IGNORE INTO pricing_config (tenant_id, key, value, unit, category, description, effective_from)
+         SELECT 1, ?, ?, ?, ?, ?, ?
+         WHERE NOT EXISTS (SELECT 1 FROM pricing_config WHERE tenant_id = 1 AND key = ? AND effective_to IS NULL)`,
+        [d.key, d.value, d.unit, d.category, d.desc, effectiveDate, d.key],
+        () => {}
+      );
+    }
+  }
+
 
   forTenant(tenantId) {
     if (!tenantId) {
@@ -1080,7 +1181,8 @@ class Database {
           'CUSTOMERS', 'LEADS', 'DEALS', 'TASKS', 'COMMUNICATIONS',
           'MPESA_TRANSACTIONS', 'JOBS', 'TENANT_CREDENTIALS', 'PARCELS', 'PARCEL_STATUS_HISTORY',
           'MATTERS', 'MATTER_TIME_ENTRIES', 'PARCEL_RESERVATIONS', 'DEAL_INSTALLMENTS', 'CONVEYANCING_MATTERS', 'PRODUCTS', 'INVOICES', 'INVOICE_ITEMS', 'EXPENDITURES', 'SITE_VISITS', 'SITE_VISIT_BOOKINGS',
-          'PROPERTIES', 'TICKETS', 'TICKET_STATUS_HISTORY', 'SAWA_CARE_CONTRACTS', 'PREVENTIVE_INSPECTIONS'
+          'PROPERTIES', 'TICKETS', 'TICKET_STATUS_HISTORY', 'SAWA_CARE_CONTRACTS', 'PREVENTIVE_INSPECTIONS',
+          'PRICING_CONFIG', 'PRICING_CONFIG_HISTORY'
         ];
         const touchesTenantTable = tenantTables.some((t) => upper.includes(t));
         if (touchesTenantTable && !upper.includes('TENANT_ID')) {
