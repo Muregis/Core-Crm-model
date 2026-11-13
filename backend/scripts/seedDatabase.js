@@ -564,6 +564,186 @@ async function seed() {
   let commCustId = commCust[0]?.id;
   await syncStagesAndSeedDeals(commercialTenantId, 'general', commCustId, commercialUserId);
 
+  // =========================================================================
+  // PROFESSION 4: Sawa Repairs (Field Service & Property Maintenance)
+  // =========================================================================
+  let sawaTenant = await db.query("SELECT * FROM tenants WHERE slug = 'sawa-repairs'");
+  let sawaTenantId;
+  if (sawaTenant.length === 0) {
+    const tenantRes = await db.query(`
+      INSERT INTO tenants (name, slug, domain, kra_pin, plan, industry, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      'Sawa Repairs Ltd',
+      'sawa-repairs',
+      'sawarepairs.co.ke',
+      'P057788990X',
+      'enterprise',
+      'field_service',
+      'active'
+    ]);
+    sawaTenantId = tenantRes.insertId;
+    console.log(`Created Sawa Repairs tenant 'sawa-repairs' with ID ${sawaTenantId}.`);
+  } else {
+    sawaTenantId = sawaTenant[0].id;
+    await db.query("UPDATE tenants SET industry = 'field_service' WHERE id = ?", [sawaTenantId]);
+  }
+
+  // 1. Sawa Repairs Admin User
+  let sawaAdmin = await db.query('SELECT * FROM users WHERE email = ?', ['admin@sawarepairs.co.ke']);
+  let sawaAdminId;
+  if (sawaAdmin.length === 0) {
+    const userRes = await db.query(`
+      INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, phone, role, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      sawaTenantId,
+      'admin@sawarepairs.co.ke',
+      passwordHash,
+      'Mwangi',
+      'Kariuki',
+      '+254700112233',
+      'admin',
+      1
+    ]);
+    sawaAdminId = userRes.insertId;
+  } else {
+    sawaAdminId = sawaAdmin[0].id;
+  }
+
+  // 2. Sawa Repairs Technician User
+  let sawaTech = await db.query('SELECT * FROM users WHERE email = ?', ['fundi@sawarepairs.co.ke']);
+  let sawaTechId;
+  if (sawaTech.length === 0) {
+    const techRes = await db.query(`
+      INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, phone, role, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      sawaTenantId,
+      'fundi@sawarepairs.co.ke',
+      passwordHash,
+      'Juma',
+      'Fundi',
+      '+254711223344',
+      'sales_rep',
+      1
+    ]);
+    sawaTechId = techRes.insertId;
+  } else {
+    sawaTechId = sawaTech[0].id;
+  }
+
+  // 3. Sawa Repairs Landlord Customer
+  let sawaCust = await db.query('SELECT id FROM customers WHERE tenant_id = ? LIMIT 1', [sawaTenantId]);
+  let sawaCustId;
+  if (sawaCust.length === 0) {
+    const custRes = await db.query(`
+      INSERT INTO customers (
+        tenant_id, first_name, last_name, email, phone, company_name,
+        customer_type, status, notes, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      sawaTenantId, 'Peter', 'Ndung\'u', 'peter@airbnbproperties.co.ke', '+254722334455',
+      'Ndung\'u Luxury Airbnb & Townhouses', 'business', 'active',
+      'Airbnb superhost managing 8 rental units across Kilimani and Riverside.', sawaAdminId
+    ]);
+    sawaCustId = custRes.insertId;
+  } else {
+    sawaCustId = sawaCust[0].id;
+  }
+
+  // 4. Sawa Repairs Properties
+  const propCount = await db.query('SELECT COUNT(*) as cnt FROM properties WHERE tenant_id = ?', [sawaTenantId]);
+  let prop1Id, prop2Id;
+  if (propCount[0].cnt === 0) {
+    const p1 = await db.query(`
+      INSERT INTO properties (tenant_id, customer_id, name, address, unit_count, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      sawaTenantId, sawaCustId, 'Kilimani Heights Apartment 4B', 'Argwings Kodhek Road, Kilimani, Nairobi',
+      24, 'High-end 2-bedroom furnished apartment with instant shower and solar backup', sawaAdminId
+    ]);
+    prop1Id = p1.insertId;
+
+    const p2 = await db.query(`
+      INSERT INTO properties (tenant_id, customer_id, name, address, unit_count, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      sawaTenantId, sawaCustId, 'Riverside Parkside Townhouse 12', 'Riverside Drive, Westlands, Nairobi',
+      1, '4-bedroom family townhouse with private lawn and pressure booster pump', sawaAdminId
+    ]);
+    prop2Id = p2.insertId;
+    console.log('Seeded properties for Sawa Repairs.');
+  }
+
+  // 5. Sawa Repairs Tickets
+  const ticketCount = await db.query('SELECT COUNT(*) as cnt FROM tickets WHERE tenant_id = ?', [sawaTenantId]);
+  if (ticketCount[0].cnt === 0) {
+    const targetProp1 = prop1Id || (await db.query('SELECT id FROM properties WHERE tenant_id = ? LIMIT 1', [sawaTenantId]))[0]?.id;
+    if (targetProp1) {
+      // Ticket 1: Emergency Plumbing (Scheduled & assigned)
+      const t1 = await db.query(`
+        INSERT INTO tickets (
+          tenant_id, ticket_number, property_id, customer_id, reported_by,
+          category, priority, status, description, assigned_technician_id,
+          scheduled_at, started_at, landlord_approval_required, approval_threshold_kes,
+          approved_at, approved_by, labour_hours, parts_cost_kes, total_cost_kes, notes, created_by
+        ) VALUES (
+          ?, 'SAW-2026-00001', ?, ?, 'Guest Alice (+254733112233)',
+          'plumbing', 'emergency', 'scheduled',
+          'Main water pressure relief valve cracked, leaking onto bathroom floor',
+          ?, '2026-11-15 10:00:00', null, 1, 5000,
+          '2026-11-13 14:00:00', ?, 2.5, 6800, 10550,
+          'Landlord approved valve replacement via WhatsApp', ?
+        )
+      `, [sawaTenantId, targetProp1, sawaCustId, sawaTechId, sawaAdminId, sawaAdminId]);
+
+      await db.query(`
+        INSERT INTO ticket_status_history (tenant_id, ticket_id, from_status, to_status, changed_by, note)
+        VALUES (?, ?, null, 'reported', ?, 'Reported via WhatsApp intake by tenant')
+      `, [sawaTenantId, t1.insertId, sawaAdminId]);
+
+      await db.query(`
+        INSERT INTO ticket_status_history (tenant_id, ticket_id, from_status, to_status, changed_by, note)
+        VALUES (?, ?, 'reported', 'scheduled', ?, 'Assigned to Juma Fundi for urgent repair')
+      `, [sawaTenantId, t1.insertId, sawaAdminId]);
+
+      await db.query(`
+        INSERT INTO tasks (
+          tenant_id, ticket_id, title, description, customer_id,
+          assigned_to, created_by, status, priority, due_date, task_type
+        ) VALUES (?, ?, 'Field Service: SAW-2026-00001 - plumbing', 'Emergency valve replacement at Kilimani Heights Apt 4B', ?, ?, ?, 'pending', 'high', '2026-11-15 10:00:00', 'field_service')
+      `, [sawaTenantId, t1.insertId, sawaCustId, sawaTechId, sawaAdminId]);
+
+      // Ticket 2: Electrical fault (In progress)
+      const t2 = await db.query(`
+        INSERT INTO tickets (
+          tenant_id, ticket_number, property_id, customer_id, reported_by,
+          category, priority, status, description, assigned_technician_id,
+          scheduled_at, started_at, labour_hours, parts_cost_kes, total_cost_kes, notes, created_by
+        ) VALUES (
+          ?, 'SAW-2026-00002', ?, ?, 'Caretaker Omwamba (+254799001122)',
+          'electrical', 'standard', 'in_progress',
+          'Distribution board breaker tripping when microwave and oven run simultaneously',
+          ?, '2026-11-14 09:00:00', '2026-11-14 09:15:00', 1.5, 3200, 5450,
+          'Load testing circuit wiring and replacing 20A breaker', ?
+        )
+      `, [sawaTenantId, prop2Id || targetProp1, sawaCustId, sawaTechId, sawaAdminId]);
+
+      await db.query(`
+        INSERT INTO ticket_status_history (tenant_id, ticket_id, from_status, to_status, changed_by, note)
+        VALUES (?, ?, null, 'reported', ?, 'Logged by caretaker')
+      `, [sawaTenantId, t2.insertId, sawaAdminId]);
+
+      await db.query(`
+        INSERT INTO ticket_status_history (tenant_id, ticket_id, from_status, to_status, changed_by, note)
+        VALUES (?, ?, 'reported', 'in_progress', ?, 'Juma on site testing distribution board')
+      `, [sawaTenantId, t2.insertId, sawaAdminId]);
+
+      console.log('Seeded demo tickets & field service tasks for Sawa Repairs.');
+    }
+  }
+
   console.log('--- Multi-Profession Database Seeding Complete ---');
   console.log('🏢 REAL ESTATE TENANT:');
   console.log('   Company:   Rift Valley Land Holdings Ltd');
@@ -582,6 +762,13 @@ async function seed() {
   console.log('   Email:     director@apexsupplies.co.ke');
   console.log('   Password:  Password123!');
   console.log('   Special:   Sees Commercial Deals, Accounts & Leads (No plots, no legal)');
+  console.log('--------------------------------------------------');
+  console.log('🔧 FIELD SERVICE TENANT (Sawa Repairs):');
+  console.log('   Company:   Sawa Repairs Ltd');
+  console.log('   Admin:     admin@sawarepairs.co.ke');
+  console.log('   Tech:      fundi@sawarepairs.co.ke');
+  console.log('   Password:  Password123!');
+  console.log('   Special:   Service tickets, property units, landlord approvals, tasks');
   console.log('--------------------------------------------------');
 }
 
