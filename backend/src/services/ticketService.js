@@ -302,6 +302,26 @@ class TicketService {
         updates.warranty_until = warrantyDate;
       }
     } else if (normTarget === 'closed') {
+      // Hard Operational Gate: Enforce Unit Economics Data Discipline
+      // Co-director mandate: No ticket moves to closed unless labour hours, parts cost, travel cost, and invoice are recorded.
+      const hasLabour = Number(ticket.labour_hours) > 0 || Number(ticket.labour_billed_kes) > 0;
+      const hasInvoice = Number(ticket.total_cost_kes) > 0 || Number(ticket.invoice_amount_kes) > 0;
+      const hasTravel = ticket.travel_cost_kes !== null && ticket.travel_cost_kes !== undefined && Number(ticket.travel_cost_kes) >= 0;
+
+      if (!options.bypassCostCheck && (!hasLabour || !hasInvoice || !hasTravel)) {
+        const missingFields = [];
+        if (!hasLabour) missingFields.push('labour_hours');
+        if (!hasInvoice) missingFields.push('invoice_amount_kes / total_cost_kes');
+        if (!hasTravel) missingFields.push('travel_cost_kes');
+
+        const err = new Error(
+          `Cannot close ticket ${ticket.ticket_number}: Mandatory unit economics data is incomplete (${missingFields.join(', ')}). ` +
+          'The ops coordinator must record labour hours, parts cost, travel cost, and invoice amount before closing.'
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+
       updates.closed_at = nowIso;
     } else if (normTarget === 'reopened') {
       updates.closed_at = null;
@@ -475,7 +495,7 @@ class TicketService {
     if (normAction === 'request') {
       updates.landlord_approval_required = 1;
       if (!ticket.approval_token) {
-        updates.approval_token = 'appr_' + crypto.randomBytes(16).toString('hex');
+        updates.approval_token = 'appr_' + crypto.randomBytes(32).toString('hex');
       }
       if (approval_threshold_kes !== undefined) {
         updates.approval_threshold_kes = Number(approval_threshold_kes);

@@ -38,7 +38,7 @@ const registerValidation = [
     .withMessage('Phone number must be in Kenyan format (+254XXXXXXXXX)'),
   body('role')
     .optional()
-    .isIn(['admin', 'manager', 'sales_rep'])
+    .isIn(['admin', 'manager', 'ops_coordinator', 'technician', 'sales_rep'])
     .withMessage('Invalid role')
 ];
 

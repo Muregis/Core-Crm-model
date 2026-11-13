@@ -39,7 +39,7 @@ describe('Field Service & Service Tickets Module (Sawa Repairs)', () => {
         firstName: 'Juma',
         lastName: 'Fundi',
         phone: `+254711${String(Date.now()).slice(-6)}`,
-        role: 'sales_rep'
+        role: 'technician'
       });
     expect(resTech.statusCode).toBe(201);
     technicianId = resTech.body.data.userId;
@@ -320,7 +320,26 @@ describe('Field Service & Service Tickets Module (Sawa Repairs)', () => {
       expect(verRes.statusCode).toBe(200);
       expect(verRes.body.data.ticket.status).toBe('verified');
 
-      // Valid step 8: verified -> closed (auto sets closed_at)
+      // Hard Operational Gate: verified -> closed WITHOUT costs MUST be blocked with 400
+      const blockedClosedRes = await request(app)
+        .patch(`/api/tickets/${ticketId}/status`)
+        .set('Authorization', `Bearer ${tenant1Token}`)
+        .send({ status: 'closed' });
+      expect(blockedClosedRes.statusCode).toBe(400);
+      expect(blockedClosedRes.body.message).toContain('Mandatory unit economics data is incomplete');
+
+      // Record unit economics (labour, parts, travel)
+      await request(app)
+        .post(`/api/tickets/${ticketId}/costs`)
+        .set('Authorization', `Bearer ${tenant1Token}`)
+        .send({
+          labour_hours: 2,
+          labour_billed_kes: 3000,
+          parts_cost_kes: 1500,
+          travel_cost_kes: 500
+        });
+
+      // Valid step 8: verified -> closed (succeeds now that data discipline is satisfied)
       const closedRes = await request(app)
         .patch(`/api/tickets/${ticketId}/status`)
         .set('Authorization', `Bearer ${tenant1Token}`)

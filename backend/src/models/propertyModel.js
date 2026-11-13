@@ -3,7 +3,7 @@ const crypto = require('crypto');
 
 class PropertyModel {
   generateToken(prefix = 'pass') {
-    return `${prefix}_${crypto.randomBytes(16).toString('hex')}`;
+    return `${prefix}_${crypto.randomBytes(32).toString('hex')}`; // 256-bit cryptographic entropy
   }
 
   async create({

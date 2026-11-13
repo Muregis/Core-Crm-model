@@ -13,6 +13,17 @@ const {
 const router = express.Router();
 
 router.use(protect);
+// Strict Field Service RBAC: Technicians are isolated from sales leads
+router.use((req, res, next) => {
+  if (req.user?.role === 'technician') {
+    return res.status(403).json({
+      success: false,
+      message: 'Technicians are not authorized to access sales leads'
+    });
+  }
+  next();
+});
+
 
 // Lead validation rules
 const leadValidation = [

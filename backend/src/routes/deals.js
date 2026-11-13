@@ -14,6 +14,17 @@ const {
 const router = express.Router();
 
 router.use(protect);
+// Strict Field Service RBAC: Technicians are isolated from commercial deal pipelines
+router.use((req, res, next) => {
+  if (req.user?.role === 'technician') {
+    return res.status(403).json({
+      success: false,
+      message: 'Technicians are not authorized to access commercial sales pipelines'
+    });
+  }
+  next();
+});
+
 
 // Deal stages must be defined before /:id parameter matching
 router.get('/stages', getDealStages);

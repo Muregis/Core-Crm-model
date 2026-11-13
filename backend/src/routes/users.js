@@ -89,6 +89,10 @@ router.get('/', authorize('admin', 'manager'), async (req, res) => {
 router.post('/', authorize('admin'), async (req, res) => {
   try {
     const { email, password, firstName, lastName, phone, role = 'sales_rep' } = req.body;
+    const allowedRoles = new Set(['admin', 'manager', 'ops_coordinator', 'technician', 'sales_rep']);
+    if (!allowedRoles.has(role)) {
+      return res.status(400).json({ success: false, message: 'Invalid role specified' });
+    }
 
     if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({ success: false, message: 'Email, password, first and last name are required' });

@@ -3,7 +3,7 @@ const crypto = require('crypto');
 
 class TicketModel {
   generateToken(prefix = 'tr') {
-    return `${prefix}_${crypto.randomBytes(16).toString('hex')}`;
+    return `${prefix}_${crypto.randomBytes(32).toString('hex')}`; // 256-bit cryptographic entropy
   }
 
   async generateTicketNumber(tenant_id) {
