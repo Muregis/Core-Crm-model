@@ -203,4 +203,97 @@ describe('WhatsApp Bridge Integration (Meta Cloud API & Twilio)', () => {
       expect(res.text).toContain('/track/');
     });
   });
+
+  describe('5. Client Experience Public Endpoints (Payments, Reports & Sign-off)', () => {
+    let ticketTrackingToken;
+    let passportToken;
+
+    beforeEach(async () => {
+      // Create a property
+      const propRes = await request(app)
+        .post('/api/properties')
+        .set('Authorization', `Bearer ${testAdminToken}`)
+        .send({
+          name: 'Kilimani Heights Apt 4B',
+          address: 'Argwings Kodhek Rd, Kilimani, Nairobi',
+          unit_count: 1,
+          airbnb_managed: 1
+        });
+      expect(propRes.statusCode).toBe(201);
+      passportToken = propRes.body.data.property?.passport_token || propRes.body.data.passport_token;
+
+      // Ingest a ticket
+      const ticketRes = await request(app)
+        .post(`/api/tickets/whatsapp-intake`)
+        .send({
+          tenant_id: testTenantId,
+          propertyIdentifier: 'Kilimani Heights Apt 4B',
+          category: 'plumbing',
+          priority: 'standard',
+          description: 'Sink mixer tap leaking continuously',
+          reportedBy: 'Kariuki Landlord (+254711000111)'
+        });
+      expect(ticketRes.statusCode).toBe(201);
+      ticketTrackingToken = ticketRes.body.data.ticket.tracking_token;
+    });
+
+    it('fetches landlord monthly maintenance report via public passport token', async () => {
+      const res = await request(app)
+        .get(`/api/public/properties/passport/${passportToken}/monthly-report`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toBeDefined();
+      expect(res.body.data.portfolio_summary).toBeDefined();
+      expect(res.body.data.portfolio_summary.spend_breakdown).toBeDefined();
+      expect(Array.isArray(res.body.data.tickets)).toBe(true);
+    });
+
+    it('initiates public M-Pesa STK push payment for a ticket without login', async () => {
+      const res = await request(app)
+        .post(`/api/public/tickets/pay/${ticketTrackingToken}`)
+        .send({
+          phoneNumber: '0712345678',
+          amount: 2500
+        });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.receiptNumber).toMatch(/^SK/);
+      expect(res.body.phoneNumber).toBe('+254712345678');
+      expect(res.body.amount).toBe(2500);
+
+      // Verify M-Pesa transaction recorded in DB
+      const txRows = await db.query(
+        'SELECT * FROM mpesa_transactions WHERE receipt_number = ? AND tenant_id = ?',
+        [res.body.receiptNumber, testTenantId]
+      );
+      expect(txRows.length).toBe(1);
+      expect(txRows[0].amount).toBe(2500);
+    });
+
+    it('records tenant digital sign-off from live tracking link', async () => {
+      const res = await request(app)
+        .post(`/api/public/tickets/signoff/${ticketTrackingToken}`)
+        .send({
+          signerName: 'Jane Tenant',
+          comments: 'Fundi arrived promptly and fixed the tap with clean finish.'
+        });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.message).toContain('Sign-off recorded successfully');
+    });
+
+    it('returns empirical measured SLA performance metrics', async () => {
+      const res = await request(app)
+        .get(`/api/public/sla-performance?tenant_id=${testTenantId}`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.median_emergency_response_hours).toBeDefined();
+      expect(res.body.data.measured_statement).toContain('Empirical Performance: Median emergency response time');
+      expect(res.body.data.guarantee_days).toBe(30);
+    });
+  });
 });

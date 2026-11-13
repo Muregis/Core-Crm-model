@@ -32,7 +32,13 @@ api.interceptors.response.use(
     // Handle common errors
     if (error.response?.status === 401) {
       const isAuthEndpoint = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/auth/register')
-      if (!isAuthEndpoint && window.location.pathname !== '/login') {
+      const isPublicPath =
+        window.location.pathname.startsWith('/track/') ||
+        window.location.pathname.startsWith('/approve/') ||
+        window.location.pathname.startsWith('/passport/') ||
+        error.config?.url?.includes('/public/')
+
+      if (!isAuthEndpoint && !isPublicPath && window.location.pathname !== '/login') {
         try {
           localStorage.removeItem('auth-storage')
         } catch {

@@ -27,7 +27,7 @@ Kenyan SMEs and SACCOs often track customers, deals, and payments across WhatsAp
 | **Payments** | M-Pesa-oriented records and encrypted credential storage patterns |
 | **Jobs** | BullMQ + Redis: enqueue reports → worker → status / result API |
 | **Vertical modules** | Land parcels & installments, commercial quotes/invoices, legal matters & billable time, executive analytics |
-| **Field Service (Sawa Repairs)** | Property maintenance tickets, trade categories, technician scheduling, landlord approvals, WhatsApp intake, SLA reminders |
+| **Field Service (Sawa Repairs)** | Property maintenance tickets, trade categories, technician scheduling, landlord approvals, WhatsApp intake, SLA reminders, 4 field/client role views, empirical SLA engine, M-Pesa 1-click settlement |
 | **Compliance hooks** | PII-aware logging patterns, export / anonymize endpoints (KDPA-oriented) |
 
 > **Honest status:** Core CRM is under active product development. Vertical modules and analytics are implemented with automated tests; treat production rollout as phased (tenant onboarding, payment credentials, and ops monitoring still need operator setup).
@@ -166,14 +166,69 @@ Powers **Sawa Repairs** (ticket-based property maintenance for landlords, Airbnb
 
 | Method | Endpoint | Description | Access |
 |--------|----------|-------------|--------|
-| `GET` | `/api/public/tickets/track/:token` | Public real-time tracker: SLA countdown clock, vetted fundi credentials badge, transparent pricing, 30-day workmanship warranty, milestone progression, before/after photos | Public (128-bit Token) |
-| `GET` | `/api/public/tickets/approve/:token` | Public view of repair quote estimate and technician notes for landlord sign-off | Public (128-bit Token) |
-| `POST` | `/api/public/tickets/approve/:token` | One-click landlord approval/rejection (automatically waives diagnostic call-out fee upon approval) | Public (128-bit Token) |
-| `GET` | `/api/public/properties/passport/:token` | Public Property Maintenance Passport: Health score (0–100), Airbnb Superhost readiness checklist, active warranties, recurring failure radar, lifetime service timeline | Public (128-bit Token) |
+| `GET` | `/api/public/tickets/track/:token` | Public real-time tracker: SLA countdown clock, vetted fundi credentials badge, transparent pricing, 30-day workmanship warranty, milestone progression, before/after photos | Public (Token-based) |
+| `POST` | `/api/public/tickets/signoff/:token` | Digital work completion sign-off by tenant or property manager | Public (Token-based) |
+| `POST` | `/api/public/tickets/pay/:token` | 1-Click M-Pesa Express (STK Push) checkout for instant settlement of callout fees & quotes | Public (Token-based) |
+| `GET` | `/api/public/tickets/approve/:token` | Public view of repair quote estimate and technician notes for landlord sign-off | Public (Token-based) |
+| `POST` | `/api/public/tickets/approve/:token` | One-click landlord approval/rejection (automatically waives diagnostic call-out fee upon approval) | Public (Token-based) |
+| `GET` | `/api/public/properties/passport/:token` | Public Property Maintenance Passport: Health score (0–100), Airbnb Superhost readiness checklist, active warranties, recurring failure radar, lifetime service timeline | Public (Token-based) |
+| `GET` | `/api/public/properties/passport/:token/monthly-report` | Interactive Monthly Maintenance Statement: Itemized work orders, KES breakdown, PDF print format | Public (Token-based) |
+| `GET` | `/api/public/sla-performance` | Empirical SLA metrics: Median emergency response hours, p90, first-time fix rate, adherence % | Public |
 | `GET` | `/api/tickets/dashboard/client-experience-metrics` | Executive Client Experience Scorecard (First-time-fix rate, active warranties, warranty rework rate, quote acceptance rate, Airbnb managed units) | Authenticated |
 | `POST` | `/api/properties/:id/preventive-inspections` | Schedule preventive package (`airbnb_guest_ready`, `pre_rains_leak_defense`, `quarterly_systems_check`) | Authenticated |
 | `GET` | `/api/properties/:id/preventive-inspections` | List scheduled and completed preventive inspections for property | Authenticated |
 | `PATCH` | `/api/properties/preventive-inspections/:id` | Complete preventive inspection, record checklist and condition rating, advance next due date (+90d) | Authenticated |
+
+---
+
+### Four Role-Tailored Frontend Views
+
+Field operations fail when field plumbers or diaspora landlords are forced into complex desktop CRM forms. Core CRM ships four distinct, role-optimized interfaces:
+
+1. **Ops Coordinator View (`/tickets`, `/properties`)**:
+   - Central triage queue with SLA breach countdowns.
+   - 1-Click fundi assignment and schedule picker.
+   - Built-in **Manual Intake Stopwatch**: Instruments call-handling time (benchmark < 3 minutes) so manual entry never becomes an operational bottleneck.
+
+2. **Technician View (`/tech` and `/technician`)**:
+   - Mobile-first interface designed for fundis in the field on 4G smartphones.
+   - High-contrast, 48px+ touch targets for greasy hands and sunlight readability.
+   - 1-Tap **"Call Client"** (`tel:...`) and **"Open Maps"** navigation.
+   - 1-Touch status transitions: *"I've Arrived"*, *"Awaiting Parts"*, *"Work Complete"*.
+   - Mandatory unit economics cost logger before closing jobs: Labour hours, billed rate, parts cost at wholesale, travel expense, and customer sign-off.
+
+3. **Landlord View (`/passport/:token` & `/approve/:token`)**:
+   - Token-authenticated public portal (no password or app download required).
+   - Review transparent repair quotes with itemized labour and wholesale parts + margin.
+   - Instant 1-click Approve or Decline with diagnostic call-out fee waiver reminder.
+   - **Interactive Monthly Maintenance Statement**: Filter by month, view total KES spend and waived callout savings, and download/print clean tax-compliant PDF reports (`window.print()`).
+
+4. **Tenant View (`/track/:token`)**:
+   - Frictionless live tracking link automatically texted/messaged upon ticket creation.
+   - Visual progress stepper from triage to fundi arrival and repair completion.
+   - Assigned technician profile and direct call button.
+   - Digital sign-off pad and 1-click M-Pesa STK push checkout.
+
+---
+
+### WhatsApp Ingestion Bridge
+
+Incoming client messages are automatically translated into tickets:
+- **Meta WhatsApp Cloud API Webhook**: `GET /api/integrations/whatsapp/meta` (verification handshake) and `POST /api/integrations/whatsapp/meta`.
+- **Twilio WhatsApp Webhook**: `POST /api/integrations/whatsapp/twilio` with automated TwiML response.
+- **Intelligent Keyword NLP**: Automatically classifies trade category (`plumbing`, `electrical`, `roofing`, `painting`, `solar`, `general`) and urgency priority (`emergency`, `standard`, `planned`).
+- **Instant Client Auto-Reply**: Dispatches the assigned ticket number (`SAW-2026-XXXXX`), SLA target window, and tokenized tracking link directly back to the sender's WhatsApp.
+- See [docs/whatsapp_bridge_setup.md](file:///c:/Users/mureg/OneDrive/Desktop/Core-Crm-model/Core-crm/Core-Crm-model/docs/whatsapp_bridge_setup.md) for full webhook configuration.
+
+---
+
+### Production Operations & High Availability
+
+- **Process Supervision**: Managed via PM2 with `ecosystem.config.js` separating Express API from BullMQ workers with auto-restart, memory caps, and graceful drain.
+- **Automated MySQL Backups**: Daily single-transaction dumps with gzip compression, 30-day rotation, and S3/cloud offsite sync.
+- **Queue Resilience**: Redis Append-Only File (AOF) persistence and `noeviction` policy for BullMQ.
+- **M-Pesa Reconciliation**: Real-time Daraja STK Push webhooks with automated transaction queries and daily Till reconciliation.
+- Complete operational procedures: [docs/production_ops_runbook.md](file:///c:/Users/mureg/OneDrive/Desktop/Core-Crm-model/Core-crm/Core-Crm-model/docs/production_ops_runbook.md).
 
 ---
 

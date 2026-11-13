@@ -726,7 +726,7 @@ export default function Tickets() {
                     {ticket.tracking_token && (
                       <button
                         onClick={() => {
-                          const url = `${window.location.origin}/api/public/tickets/track/${ticket.tracking_token}`
+                          const url = `${window.location.origin}/track/${ticket.tracking_token}`
                           copyToClipboard(url, 'Client Live Tracking URL')
                         }}
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -740,7 +740,7 @@ export default function Tickets() {
                     {ticket.approval_token && !ticket.approved_at && (
                       <button
                         onClick={() => {
-                          const url = `${window.location.origin}/api/public/tickets/approve/${ticket.approval_token}`
+                          const url = `${window.location.origin}/approve/${ticket.approval_token}`
                           copyToClipboard(url, 'Landlord One-Click Approval URL')
                         }}
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-xs font-medium text-amber-800 dark:text-amber-300 hover:bg-amber-100 transition-colors"
@@ -1237,14 +1237,14 @@ export default function Tickets() {
                   <div className="flex items-center gap-2">
                     <input
                       readOnly
-                      value={`${window.location.origin}/api/public/tickets/approve/${activeTicket.approval_token}`}
+                      value={`${window.location.origin}/approve/${activeTicket.approval_token}`}
                       className="w-full text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-1.5 rounded truncate"
                     />
                     <button
                       type="button"
                       onClick={() =>
                         copyToClipboard(
-                          `${window.location.origin}/api/public/tickets/approve/${activeTicket.approval_token}`,
+                          `${window.location.origin}/approve/${activeTicket.approval_token}`,
                           'One-Click Approval Link'
                         )
                       }

@@ -107,9 +107,105 @@ const getPropertyPassport = async (req, res) => {
   }
 };
 
+// @desc    View public Landlord Monthly Maintenance Report via Passport Token
+// @route   GET /api/public/properties/passport/:token/monthly-report
+// @access  Public (Token-authenticated)
+const getPublicMonthlyReport = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { month, monthYear } = req.query;
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Passport token is required' });
+    }
+
+    const report = await ticketService.getLandlordMonthlyReportByPassportToken(token, month || monthYear);
+    res.status(200).json({
+      success: true,
+      data: report
+    });
+  } catch (error) {
+    logger.error('Error in public getPublicMonthlyReport:', error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Error fetching landlord monthly report'
+    });
+  }
+};
+
+// @desc    Initiate public M-Pesa STK Push payment for repair invoice or call-out
+// @route   POST /api/public/tickets/pay/:token
+// @access  Public (Token-authenticated)
+const submitPublicPayment = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { phoneNumber, amount } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Token is required' });
+    }
+
+    const result = await ticketService.processPublicPayment(token, phoneNumber, amount);
+    res.status(200).json(result);
+  } catch (error) {
+    logger.error('Error in public submitPublicPayment:', error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Error processing M-Pesa payment'
+    });
+  }
+};
+
+// @desc    Submit tenant or landlord completion sign-off from live tracker
+// @route   POST /api/public/tickets/signoff/:token
+// @access  Public (Token-authenticated)
+const submitTenantSignoff = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { signerName, comments } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Tracking token is required' });
+    }
+
+    const result = await ticketService.processTenantSignoff(token, signerName, comments);
+    res.status(200).json(result);
+  } catch (error) {
+    logger.error('Error in public submitTenantSignoff:', error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      success: false,
+      message: error.message || 'Error recording completion sign-off'
+    });
+  }
+};
+
+// @desc    Get verified empirical SLA performance statistics
+// @route   GET /api/public/sla-performance
+// @access  Public
+const getPublicMeasuredSla = async (req, res) => {
+  try {
+    const tenantId = Number(req.query.tenant_id) || 1;
+    const performance = await ticketService.getMeasuredSlaPerformance(tenantId);
+    res.status(200).json({
+      success: true,
+      data: performance
+    });
+  } catch (error) {
+    logger.error('Error in getPublicMeasuredSla:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error fetching SLA performance'
+    });
+  }
+};
+
 module.exports = {
   trackTicket,
   getApprovalQuote,
   submitApprovalDecision,
-  getPropertyPassport
+  getPropertyPassport,
+  getPublicMonthlyReport,
+  submitPublicPayment,
+  submitTenantSignoff,
+  getPublicMeasuredSla
 };

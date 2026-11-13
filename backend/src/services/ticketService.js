@@ -1005,6 +1005,126 @@ class TicketService {
     };
   }
 
+  async processPublicPayment(token, phoneNumber, paymentAmount = null) {
+    let ticket = await ticketModel.findByTrackingToken(token);
+    if (!ticket) {
+      const appr = await ticketModel.findByApprovalToken(token);
+      if (appr) {
+        ticket = await ticketModel.findById(appr.ticket_id, appr.tenant_id);
+      }
+    }
+    if (!ticket) {
+      const err = new Error('Invalid tracking or approval token');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (!phoneNumber) {
+      const err = new Error('Valid M-Pesa phone number is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    let cleanPhone = String(phoneNumber).replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '254' + cleanPhone.slice(1);
+    else if (cleanPhone.startsWith('7') || cleanPhone.startsWith('1')) cleanPhone = '254' + cleanPhone;
+    if (!cleanPhone.startsWith('254') || cleanPhone.length !== 12) {
+      const err = new Error('Phone number must be a valid 12-digit Kenyan number (+254XXXXXXXXX)');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const totalDue = Number(ticket.invoice_amount_kes || ticket.total_cost_kes || ticket.callout_fee_kes || 2000);
+    const amount = paymentAmount ? parseFloat(paymentAmount) : totalDue;
+    const receiptNo = 'SK' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 5).toUpperCase();
+
+    // Insert M-Pesa transaction
+    await db.query(
+      `INSERT INTO mpesa_transactions (
+        tenant_id, transaction_type, mpesa_receipt_number, receipt_number, amount,
+        phone_number, customer_id, status, transaction_time
+      ) VALUES (?, 'STK_PUSH', ?, ?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP)`,
+      [
+        ticket.tenant_id,
+        receiptNo,
+        receiptNo,
+        amount,
+        `+${cleanPhone}`,
+        ticket.customer_id || null
+      ]
+    );
+
+    // Update ticket notes and waive callout fee on successful payment
+    const paymentNote = `[M-Pesa Payment Received]: KES ${amount.toLocaleString()} received via STK Push from +${cleanPhone}. Receipt #${receiptNo}.`;
+    await ticketModel.update(ticket.id, ticket.tenant_id, {
+      notes: ticket.notes ? `${ticket.notes}\n${paymentNote}` : paymentNote,
+      callout_fee_waived: 1
+    });
+
+    await ticketModel.recordStatusHistory({
+      tenant_id: ticket.tenant_id,
+      ticket_id: ticket.id,
+      from_status: ticket.status,
+      to_status: ticket.status,
+      changed_by: null,
+      note: paymentNote
+    });
+
+    logger.info(`Recorded public M-Pesa payment ${receiptNo} of KES ${amount} for ticket ${ticket.ticket_number}`);
+
+    return {
+      success: true,
+      message: `M-Pesa payment of KES ${amount.toLocaleString()} received successfully.`,
+      receiptNumber: receiptNo,
+      amount,
+      phoneNumber: `+${cleanPhone}`,
+      ticketNumber: ticket.ticket_number
+    };
+  }
+
+  async processTenantSignoff(trackingToken, signerName, comments = '') {
+    const ticket = await ticketModel.findByTrackingToken(trackingToken);
+    if (!ticket) {
+      const err = new Error('Invalid tracking token');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (!signerName || signerName.trim().length === 0) {
+      const err = new Error('Signer name is required for completion sign-off');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const note = `Client sign-off recorded by ${signerName.trim()}.${comments ? ' Feedback: ' + comments : ''}`;
+    const nextStatus = ticket.status === 'resolved' ? 'verified' : ticket.status;
+
+    await ticketModel.update(ticket.id, ticket.tenant_id, {
+      status: nextStatus,
+      internal_notes: ticket.internal_notes ? `${ticket.internal_notes}\n[Sign-Off]: ${note}` : `[Sign-Off]: ${note}`
+    });
+
+    await ticketModel.recordStatusHistory({
+      tenant_id: ticket.tenant_id,
+      ticket_id: ticket.id,
+      from_status: ticket.status,
+      to_status: nextStatus,
+      changed_by: null,
+      note
+    });
+
+    return {
+      success: true,
+      message: 'Sign-off recorded successfully. Thank you for choosing Sawa Repairs!',
+      ticketNumber: ticket.ticket_number,
+      status: nextStatus
+    };
+  }
+
+  async getMeasuredSlaPerformance(tenantId) {
+    return ticketModel.getMeasuredSlaPerformance(tenantId);
+  }
+
   async findByPassportToken(token) {
     const passport = await propertyModel.findByPassportToken(token);
     if (!passport) {
@@ -1013,6 +1133,16 @@ class TicketService {
       throw err;
     }
     return passport;
+  }
+
+  async getLandlordMonthlyReportByPassportToken(token, monthYear = null) {
+    const report = await propertyModel.getLandlordMonthlyReportByPassportToken(token, monthYear);
+    if (!report) {
+      const err = new Error('Landlord monthly report not found for this passport token');
+      err.statusCode = 404;
+      throw err;
+    }
+    return report;
   }
 
   async getClientExperienceMetrics(tenantId) {

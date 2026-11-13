@@ -21,6 +21,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import { customerService } from '../services/customerService'
+import { propertyService } from '../services/propertyService'
 import { formatCurrencyKES } from '../utils/formatters'
 import { useAuthStore } from '../store/authStore'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -36,6 +37,29 @@ const CustomerDetail = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [kdpaLoading, setKdpaLoading] = useState(false)
+  const [landlordReport, setLandlordReport] = useState(null)
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [reportLoading, setReportLoading] = useState(false)
+
+  const loadLandlordReport = async (month) => {
+    setReportLoading(true)
+    try {
+      const res = await propertyService.getLandlordMonthlyReport(id, month)
+      if (res.data?.success) {
+        setLandlordReport(res.data.data)
+      }
+    } catch (err) {
+      console.error('Error fetching landlord report:', err)
+    } finally {
+      setReportLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'properties') {
+      loadLandlordReport(reportMonth)
+    }
+  }, [activeTab, reportMonth, id])
 
   const loadCustomer = async () => {
     setIsLoading(true)
@@ -282,6 +306,13 @@ const CustomerDetail = () => {
 
           {/* Quick Contact Actions */}
           <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={() => setActiveTab('properties')}
+              className="inline-flex items-center px-3.5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-xs font-semibold shadow-sm transition"
+            >
+              <Building className="w-4 h-4 mr-1.5" />
+              Landlord Statement & Properties
+            </button>
             {customer.phone && (
               <a
                 href={`https://wa.me/${cleanPhone}`}
@@ -327,6 +358,7 @@ const CustomerDetail = () => {
       <div className="flex border-b border-gray-200 dark:border-gray-800 gap-4 overflow-x-auto">
         {[
           { id: 'overview', label: 'Client Overview' },
+          { id: 'properties', label: 'Properties & Statements' },
           { id: 'deals', label: `Deals (${stats.deals.length})` },
           { id: 'communications', label: `Communications (${stats.communications.length})` },
           { id: 'tasks', label: `Tasks (${stats.tasks.length})` },
@@ -381,6 +413,168 @@ const CustomerDetail = () => {
               {customer.notes || 'No notes logged for this customer yet.'}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* TAB: Properties & Monthly Maintenance Statements */}
+      {activeTab === 'properties' && (
+        <div className="space-y-6">
+          {/* Header & Month Filter */}
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-gray-900 dark:text-gray-100 text-base">
+                Landlord Portfolio & Monthly Statement
+              </h3>
+              <p className="text-xs text-gray-500">
+                Consolidated statement across all properties owned by {customer.first_name} {customer.last_name}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary-600" />
+                <input
+                  type="month"
+                  value={reportMonth}
+                  onChange={(e) => setReportMonth(e.target.value)}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 font-semibold text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+              <button
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-sm transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Print Statement
+              </button>
+            </div>
+          </div>
+
+          {reportLoading ? (
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-12 text-center text-xs text-gray-500">
+              Generating landlord statement for {reportMonth}...
+            </div>
+          ) : landlordReport ? (
+            <div className="space-y-6">
+              {/* Financial KPI Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Invoiced</span>
+                  <p className="text-xl font-black text-gray-900 dark:text-gray-100 mt-1">
+                    {formatCurrencyKES(landlordReport.portfolio_summary?.total_spend_kes || 0)}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {landlordReport.portfolio_summary?.total_tickets_month || 0} repairs completed
+                  </p>
+                </div>
+
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Labour Billed</span>
+                  <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    {formatCurrencyKES(landlordReport.portfolio_summary?.spend_breakdown?.labour_kes || 0)}
+                  </p>
+                  <p className="text-[11px] text-emerald-600 mt-0.5">Specialist field rate</p>
+                </div>
+
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Parts (At Cost + 20%)</span>
+                  <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    {formatCurrencyKES(landlordReport.portfolio_summary?.spend_breakdown?.parts_kes || 0)}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Capped markup policy</p>
+                </div>
+
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Portfolio Units</span>
+                  <p className="text-xl font-black text-primary-600 mt-1">
+                    {landlordReport.portfolio_summary?.total_units || 0} Units
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Across {landlordReport.portfolio_summary?.properties_count || 0} properties
+                  </p>
+                </div>
+              </div>
+
+              {/* Properties Registered */}
+              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm space-y-4">
+                <h4 className="font-bold text-gray-900 dark:text-gray-100 text-sm uppercase tracking-wider text-xs">
+                  Registered Properties & Maintenance Passports
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(landlordReport.properties || []).map((p) => (
+                    <div
+                      key={p.id}
+                      className="p-4 border border-gray-100 dark:border-gray-800 rounded-xl flex items-center justify-between"
+                    >
+                      <div>
+                        <h5 className="font-bold text-sm text-gray-900 dark:text-gray-100">{p.name}</h5>
+                        <p className="text-xs text-gray-500">{p.address} · {p.unit_count} Units</p>
+                      </div>
+                      <Link
+                        to="/properties"
+                        className="text-xs font-bold text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                      >
+                        Manage <ExternalLink className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Itemized Tickets in Selected Month */}
+              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                  <h4 className="font-bold text-gray-900 dark:text-gray-100 text-sm uppercase tracking-wider text-xs">
+                    Work Orders in {reportMonth} ({landlordReport.tickets?.length || 0})
+                  </h4>
+                  <span className="text-xs text-gray-500 font-medium">Auto-aggregated for accounting</span>
+                </div>
+                {landlordReport.tickets && landlordReport.tickets.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 border-b border-gray-100 dark:border-gray-800">
+                        <tr>
+                          <th className="py-2.5 px-4 font-bold uppercase">Ticket</th>
+                          <th className="py-2.5 px-4 font-bold uppercase">Property</th>
+                          <th className="py-2.5 px-4 font-bold uppercase">Issue</th>
+                          <th className="py-2.5 px-4 font-bold uppercase">Specialist</th>
+                          <th className="py-2.5 px-4 font-bold uppercase text-right">Invoiced</th>
+                          <th className="py-2.5 px-4 font-bold uppercase text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-300">
+                        {landlordReport.tickets.map((t, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
+                            <td className="py-3 px-4 font-mono font-bold text-gray-900 dark:text-gray-100">
+                              {t.ticket_number}
+                            </td>
+                            <td className="py-3 px-4 font-medium">{t.property_name}</td>
+                            <td className="py-3 px-4">{t.description}</td>
+                            <td className="py-3 px-4">{t.technician_name || 'Assigned Specialist'}</td>
+                            <td className="py-3 px-4 text-right font-black text-gray-900 dark:text-gray-100">
+                              {formatCurrencyKES(t.invoice_amount_kes || 0)}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-400">
+                                {t.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-gray-500 text-xs">
+                    No tickets found for this landlord in {reportMonth}.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center text-gray-500 text-xs">
+              No properties registered for this customer yet.
+            </div>
+          )}
         </div>
       )}
 

@@ -597,6 +597,139 @@ class PropertyModel {
     };
   }
 
+  async getPropertyMonthlyReport(propertyId, tenantId, monthYear = null, propData = null) {
+    const targetMonth = monthYear || new Date().toISOString().slice(0, 7);
+    const startOfMonth = `${targetMonth}-01 00:00:00`;
+    const nextMonthDate = new Date(`${targetMonth}-01T00:00:00Z`);
+    nextMonthDate.setUTCMonth(nextMonthDate.getUTCMonth() + 1);
+    const endOfMonth = nextMonthDate.toISOString().replace('T', ' ').slice(0, 19);
+
+    const prop = propData || (await this.findById(propertyId, tenantId));
+    if (!prop) return null;
+
+    const tickets = await db.query(
+      `SELECT t.*,
+              u.first_name AS technician_first_name,
+              u.last_name AS technician_last_name
+       FROM tickets t
+       LEFT JOIN users u ON t.assigned_technician_id = u.id AND u.tenant_id = t.tenant_id
+       WHERE t.property_id = ? AND t.tenant_id = ?
+         AND t.created_at >= ? AND t.created_at < ?
+       ORDER BY t.created_at DESC`,
+      [propertyId, tenantId, startOfMonth, endOfMonth]
+    );
+
+    let totalSpendKes = 0;
+    let totalLabourBilledKes = 0;
+    let totalPartsBilledKes = 0;
+    let totalCalloutFeesKes = 0;
+    let completedCount = 0;
+    let openCount = 0;
+    let emergencyCount = 0;
+
+    for (const t of tickets || []) {
+      const spend = Number(t.invoice_amount_kes || t.total_cost_kes || 0);
+      totalSpendKes += spend;
+      totalLabourBilledKes += Number(t.labour_billed_kes || 0);
+      totalPartsBilledKes += Number(t.parts_billed_kes || 0);
+      totalCalloutFeesKes += Number(t.callout_fee_waived ? 0 : (t.callout_fee_kes || 0));
+
+      if (['resolved', 'verified', 'closed'].includes(t.status)) {
+        completedCount++;
+      } else {
+        openCount++;
+      }
+
+      if (t.priority === 'emergency') {
+        emergencyCount++;
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const warranties = await db.query(
+      `SELECT t.id, t.ticket_number, t.category, t.description, t.warranty_until
+       FROM tickets t
+       WHERE t.property_id = ? AND t.tenant_id = ?
+         AND t.warranty_until IS NOT NULL AND t.warranty_until >= ?
+       ORDER BY t.warranty_until ASC`,
+      [propertyId, tenantId, nowIso]
+    );
+
+    return {
+      report_period: targetMonth,
+      landlord: {
+        id: prop.customer_id || null,
+        name: `${prop.landlord_first_name || prop.first_name || ''} ${prop.landlord_last_name || prop.last_name || ''}`.trim() || prop.company_name || 'Property Owner',
+        phone: prop.phone || null,
+        email: prop.email || null
+      },
+      portfolio_summary: {
+        properties_count: 1,
+        total_units: prop.unit_count || 1,
+        total_tickets_month: tickets.length,
+        completed_tickets: completedCount,
+        open_tickets: openCount,
+        emergency_tickets: emergencyCount,
+        total_spend_kes: totalSpendKes,
+        spend_breakdown: {
+          labour_kes: totalLabourBilledKes,
+          parts_kes: totalPartsBilledKes,
+          callouts_kes: totalCalloutFeesKes
+        }
+      },
+      properties: [
+        {
+          id: prop.id,
+          name: prop.name,
+          address: prop.address,
+          unit_count: prop.unit_count || 1,
+          tickets_in_month: tickets.length
+        }
+      ],
+      active_warranties: warranties || [],
+      tickets: (tickets || []).map((t) => ({
+        ticket_number: t.ticket_number,
+        property_name: prop.name,
+        category: t.category,
+        priority: t.priority,
+        status: t.status,
+        description: t.description,
+        invoice_amount_kes: Number(t.invoice_amount_kes || t.total_cost_kes || 0),
+        technician_name: t.technician_first_name
+          ? `${t.technician_first_name} ${t.technician_last_name || ''}`.trim()
+          : null,
+        created_at: t.created_at,
+        resolved_at: t.resolved_at
+      }))
+    };
+  }
+
+  async getLandlordMonthlyReportByPassportToken(token, monthYear = null) {
+    if (!token) return null;
+    const rows = await db.query(
+      `SELECT p.*,
+              c.first_name AS landlord_first_name,
+              c.last_name AS landlord_last_name,
+              c.company_name AS landlord_company_name,
+              c.phone AS landlord_phone,
+              c.email AS landlord_email
+       FROM properties p
+       LEFT JOIN customers c ON p.customer_id = c.id
+       WHERE p.passport_token = ?
+       LIMIT 1`,
+      [token]
+    );
+
+    if (!rows || rows.length === 0) return null;
+    const prop = rows[0];
+
+    if (prop.customer_id) {
+      return this.getLandlordMonthlyReport(prop.customer_id, prop.tenant_id, monthYear);
+    }
+
+    return this.getPropertyMonthlyReport(prop.id, prop.tenant_id, monthYear, prop);
+  }
+
   // --- Sawa Preventive Care Inspection Packages ---
 
   async schedulePreventiveInspection({

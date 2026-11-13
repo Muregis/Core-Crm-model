@@ -3,7 +3,11 @@ const {
   trackTicket,
   getApprovalQuote,
   submitApprovalDecision,
-  getPropertyPassport
+  getPropertyPassport,
+  getPublicMonthlyReport,
+  submitPublicPayment,
+  submitTenantSignoff,
+  getPublicMeasuredSla
 } = require('../controllers/publicController');
 
 const router = express.Router();
@@ -44,12 +48,31 @@ const validateTokenFormat = (paramName, prefix) => {
   };
 };
 
+const validatePaymentTokenFormat = (req, res, next) => {
+  const token = req.params.token;
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ success: false, message: 'Payment token is required' });
+  }
+  const regex = /^(tr|appr|pass)_[a-zA-Z0-9_-]{12,70}$/;
+  if (!regex.test(token)) {
+    return res.status(404).json({ success: false, message: 'Invalid or malformed payment token' });
+  }
+  next();
+};
+
 // Public routes for clients, landlords, and reporters (secured via 256-bit tokens & rate limits)
 router.get(
   '/tickets/track/:token',
   rateLimitPublicPortal(60),
   validateTokenFormat('token', 'tr'),
   trackTicket
+);
+
+router.post(
+  '/tickets/signoff/:token',
+  rateLimitPublicPortal(20),
+  validateTokenFormat('token', 'tr'),
+  submitTenantSignoff
 );
 
 router.get(
@@ -66,11 +89,31 @@ router.post(
   submitApprovalDecision
 );
 
+router.post(
+  '/tickets/pay/:token',
+  rateLimitPublicPortal(15), // M-Pesa STK Push payment trigger
+  validatePaymentTokenFormat,
+  submitPublicPayment
+);
+
 router.get(
   '/properties/passport/:token',
   rateLimitPublicPortal(60),
   validateTokenFormat('token', 'pass'),
   getPropertyPassport
+);
+
+router.get(
+  '/properties/passport/:token/monthly-report',
+  rateLimitPublicPortal(60),
+  validateTokenFormat('token', 'pass'),
+  getPublicMonthlyReport
+);
+
+router.get(
+  '/sla-performance',
+  rateLimitPublicPortal(60),
+  getPublicMeasuredSla
 );
 
 module.exports = router;
