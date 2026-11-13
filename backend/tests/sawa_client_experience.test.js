@@ -166,7 +166,7 @@ describe('Sawa Repairs — Client Experience Layer & Public Self-Service Portal'
       expect(tracking.technician.credential_badge).toContain('EPRA/NCA Certified');
 
       // SLA Countdown Clock
-      expect(tracking.sla_clock.committed_hours).toBe(3); // 3h for emergency
+      expect(tracking.sla_clock.committed_hours).toBe(6); // 6h interim SLA
       expect(tracking.sla_clock.response_due_at).toBeDefined();
 
       // Client-facing Milestones
@@ -295,6 +295,8 @@ describe('Sawa Repairs — Client Experience Layer & Public Self-Service Portal'
       expect(passport.health_score.score).toBeGreaterThanOrEqual(0);
       expect(passport.health_score.score).toBeLessThanOrEqual(100);
       expect(passport.health_score.grade).toBeDefined();
+      expect(passport.health_score.formula_explanation).toContain('Base 100 points');
+      expect(passport.health_score.findings_narrative).toBeDefined();
 
       // Recurring failure radar and alerts
       expect(Array.isArray(passport.recurring_alerts)).toBe(true);

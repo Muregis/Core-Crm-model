@@ -48,11 +48,25 @@ const getTickets = async (req, res) => {
       q
     };
 
+    const isTechnician = req.user.role === 'sales_rep' || req.user.role === 'technician';
+    if (isTechnician) {
+      filters.assigned_technician_id = req.user.id;
+    }
+
     const { tickets, total } = await ticketModel.findAll(
       req.user.tenant_id,
       filters,
       { limit: limitNum, offset, sortBy, sortOrder }
     );
+
+    if (isTechnician) {
+      tickets.forEach(t => {
+        delete t.gross_margin_kes;
+        delete t.margin_percentage;
+        delete t.parts_markup_percentage;
+        delete t.labour_cost_kes;
+      });
+    }
 
     res.json({
       success: true,
@@ -81,6 +95,21 @@ const getTicket = async (req, res) => {
     if (!ticket) {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
+
+    const isTechnician = req.user.role === 'sales_rep' || req.user.role === 'technician';
+    if (isTechnician) {
+      if (ticket.assigned_technician_id && ticket.assigned_technician_id !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are only authorized to view service tickets assigned to you'
+        });
+      }
+      delete ticket.gross_margin_kes;
+      delete ticket.margin_percentage;
+      delete ticket.parts_markup_percentage;
+      delete ticket.labour_cost_kes;
+    }
+
     res.json({ success: true, data: { ticket } });
   } catch (error) {
     logger.error('Error fetching ticket:', error);

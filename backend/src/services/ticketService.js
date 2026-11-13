@@ -9,6 +9,8 @@ const {
   enqueueTechnicianDigest
 } = require('../jobs/producers/ticketProducer');
 
+const EMERGENCY_SLA_HOURS = parseInt(process.env.EMERGENCY_SLA_HOURS || '6', 10);
+
 const ALLOWED_CATEGORIES = new Set([
   'plumbing',
   'electrical',
@@ -56,8 +58,8 @@ class TicketService {
   calculateSlaDeadline(priority, fromDate = new Date()) {
     const base = new Date(fromDate);
     if (priority === 'emergency') {
-      // 3 hours response SLA (Product Document v2.1 §4.4: 2–4 hours)
-      return new Date(base.getTime() + 3 * 60 * 60 * 1000).toISOString();
+      // Configurable interim SLA (default 6h; target 2–6h window for Nairobi logistics)
+      return new Date(base.getTime() + EMERGENCY_SLA_HOURS * 60 * 60 * 1000).toISOString();
     } else if (priority === 'planned') {
       // 96 hours (4 working days: 3–5 working days)
       return new Date(base.getTime() + 96 * 60 * 60 * 1000).toISOString();
@@ -224,7 +226,7 @@ class TicketService {
           ticketId: ticket.id,
           ticketNumber: ticket.ticket_number,
           priority: ticket.priority,
-          delayMs: 3 * 60 * 60 * 1000 // 3 hours
+          delayMs: EMERGENCY_SLA_HOURS * 60 * 60 * 1000
         });
       } catch (qErr) {
         logger.warn('Failed to enqueue SLA reminder:', qErr.message);
@@ -745,7 +747,8 @@ class TicketService {
       }
     }
 
-    // If property wasn't found but propertyIdentifier given, auto-create property record
+    // Property auto-provisioning with security guardrails and verification tagging
+    let pendingVerificationNote = null;
     if (!property && propertyIdentifier) {
       property = await propertyModel.create({
         tenant_id: tenantId,
@@ -753,8 +756,13 @@ class TicketService {
         name: propertyIdentifier,
         address: unitNumber ? `Unit ${unitNumber}, ${propertyIdentifier}` : propertyIdentifier,
         unit_count: 1,
-        notes: `Auto-created from WhatsApp intake for ${reportedBy || 'tenant'}`
+        notes: customerId
+          ? `Auto-created from WhatsApp intake for ${reportedBy || 'tenant'}`
+          : `Auto-provisioned from WhatsApp intake for ${reportedBy || 'tenant'}. Pending landlord verification.`
       });
+      if (!customerId) {
+        pendingVerificationNote = `[Pending Landlord Verification: "${propertyIdentifier}"]`;
+      }
     }
 
     const normCategory = ALLOWED_CATEGORIES.has(String(category).toLowerCase())
@@ -809,7 +817,7 @@ class TicketService {
           ticketId: ticket.id,
           ticketNumber: ticket.ticket_number,
           priority: ticket.priority,
-          delayMs: 3 * 60 * 60 * 1000
+          delayMs: EMERGENCY_SLA_HOURS * 60 * 60 * 1000
         });
       } catch (err) {
         logger.warn('Failed to enqueue WhatsApp emergency SLA reminder:', err.message);

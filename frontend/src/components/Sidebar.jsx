@@ -15,7 +15,9 @@ import {
   MessageSquare,
   Layers,
   Scale,
-  FileText
+  FileText,
+  Wrench,
+  Building2
 } from 'lucide-react'
 import { cn } from '../utils/cn'
 import { useAuthStore } from '../store/authStore'
@@ -25,35 +27,67 @@ const Sidebar = ({ isOpen, onClose }) => {
   const { user } = useAuthStore()
 
   const industry = user?.tenant_industry || 'all'
+  const isTechnician = (user?.role === 'sales_rep' || user?.role === 'technician') && industry === 'field_service'
 
   // Dynamic navigation labels: each profession sees their own specialized terminology
-  const customersLabel = industry === 'legal' ? 'Clients' : industry === 'real_estate' ? 'Buyers & Clients' : 'Customer Accounts'
-  const leadsLabel = industry === 'legal' ? 'Prospective Clients' : industry === 'real_estate' ? 'Plot Inquiries' : 'Sales Leads'
-  const dealsLabel = industry === 'legal' ? 'Retainers & Briefs' : industry === 'real_estate' ? 'Land Deals' : 'Deals Pipeline'
+  const customersLabel = 
+    industry === 'legal' ? 'Clients' :
+    industry === 'real_estate' ? 'Buyers & Clients' :
+    industry === 'field_service' ? 'Landlord Accounts' : 'Customer Accounts'
 
-  const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { name: customersLabel, href: '/customers', icon: Users },
-    { name: leadsLabel, href: '/leads', icon: Target },
-    { name: dealsLabel, href: '/deals', icon: Briefcase },
-    // Commercial Core Pack: Invoices & eTIMS Quotes (Active for Commercial & Multi-Discipline)
-    ...((industry === 'general' || industry === 'all') ? [
-      { name: 'Invoices & Quotes', href: '/invoices', icon: FileText }
-    ] : []),
-    // Land & Property Pack (Active for Real Estate & Multi-Discipline firms)
-    ...((industry === 'real_estate' || industry === 'all') ? [
-      { name: 'Plot Matrix & Land', href: '/parcels', icon: Layers }
-    ] : []),
-    // Legal Practice Pack (Active for Law Firms & Multi-Discipline firms)
-    ...((industry === 'legal' || industry === 'all') ? [
-      { name: 'Legal Matters', href: '/matters', icon: Scale }
-    ] : []),
-    { name: 'M-Pesa Vault', href: '/mpesa', icon: CreditCard },
-    { name: 'Communications', href: '/communications', icon: MessageSquare },
-    { name: 'Tasks', href: '/tasks', icon: CheckSquare },
-    { name: 'Analytics', href: '/analytics', icon: BarChart3 },
-    { name: 'Settings', href: '/settings', icon: Settings },
-  ]
+  const leadsLabel = 
+    industry === 'legal' ? 'Prospective Clients' :
+    industry === 'real_estate' ? 'Plot Inquiries' :
+    industry === 'field_service' ? 'Airbnb Inquiries' : 'Sales Leads'
+
+  const dealsLabel = 
+    industry === 'legal' ? 'Retainers & Briefs' :
+    industry === 'real_estate' ? 'Land Deals' :
+    industry === 'field_service' ? 'Service Agreements' : 'Deals Pipeline'
+
+  // Role-gated and unbloated navigation array
+  const navigation = isTechnician
+    ? [
+        // Unbloated technician queue: strictly their own jobs & daily field tasks
+        { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+        { name: 'My Service Tickets', href: '/tickets', icon: Wrench },
+        { name: 'My Assigned Tasks', href: '/tasks', icon: CheckSquare },
+        { name: 'Communications', href: '/communications', icon: MessageSquare }
+      ]
+    : [
+        { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+
+        // Field Service & Property Maintenance Pack (Active for Sawa Repairs & Multi-Discipline)
+        ...((industry === 'field_service' || industry === 'all') ? [
+          { name: 'Service Tickets', href: '/tickets', icon: Wrench },
+          { name: 'Properties & Passports', href: '/properties', icon: Building2 }
+        ] : []),
+
+        { name: customersLabel, href: '/customers', icon: Users },
+        { name: leadsLabel, href: '/leads', icon: Target },
+        { name: dealsLabel, href: '/deals', icon: Briefcase },
+
+        // Commercial Core Pack: Invoices & eTIMS Quotes
+        ...((industry === 'general' || industry === 'field_service' || industry === 'all') ? [
+          { name: 'Invoices & Quotes', href: '/invoices', icon: FileText }
+        ] : []),
+
+        // Land & Property Pack (Active for Real Estate & Multi-Discipline firms)
+        ...((industry === 'real_estate' || industry === 'all') ? [
+          { name: 'Plot Matrix & Land', href: '/parcels', icon: Layers }
+        ] : []),
+
+        // Legal Practice Pack (Active for Law Firms & Multi-Discipline firms)
+        ...((industry === 'legal' || industry === 'all') ? [
+          { name: 'Legal Matters', href: '/matters', icon: Scale }
+        ] : []),
+
+        { name: 'M-Pesa Vault', href: '/mpesa', icon: CreditCard },
+        { name: 'Communications', href: '/communications', icon: MessageSquare },
+        { name: 'Tasks', href: '/tasks', icon: CheckSquare },
+        { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+        { name: 'Settings', href: '/settings', icon: Settings }
+      ]
 
   const userInitials = user?.first_name
     ? `${user.first_name[0]}${user.last_name ? user.last_name[0] : ''}`
@@ -63,6 +97,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const tenantTitle = user?.tenant_name || 'Kenya CRM'
 
   const editionLabel = 
+    industry === 'field_service' ? 'Field Service Edition' :
     industry === 'legal' ? 'Legal Practice Edition' :
     industry === 'real_estate' ? 'Real Estate Edition' :
     industry === 'general' ? 'Commercial Core' : 'Enterprise Edition'
@@ -81,6 +116,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                     <Scale className="h-5 w-5 text-white" />
                   ) : industry === 'real_estate' ? (
                     <Layers className="h-5 w-5 text-white" />
+                  ) : industry === 'field_service' ? (
+                    <Wrench className="h-5 w-5 text-white" />
                   ) : (
                     <Phone className="h-5 w-5 text-white" />
                   )}
@@ -170,6 +207,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                         <Scale className="h-5 w-5 text-white" />
                       ) : industry === 'real_estate' ? (
                         <Layers className="h-5 w-5 text-white" />
+                      ) : industry === 'field_service' ? (
+                        <Wrench className="h-5 w-5 text-white" />
                       ) : (
                         <Phone className="h-5 w-5 text-white" />
                       )}

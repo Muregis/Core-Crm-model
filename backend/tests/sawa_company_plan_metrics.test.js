@@ -237,7 +237,7 @@ describe('Sawa Repairs Product Document v2.1 Metrics & Implementation', () => {
       const createdTime = new Date(createdIso).getTime();
       const dueTime = new Date(ticket.sla_response_due_at).getTime();
       const diffHours = Math.round((dueTime - createdTime) / (60 * 60 * 1000));
-      expect(diffHours).toBe(3);
+      expect(diffHours).toBe(6); // 6h interim SLA
 
       // Triage response within SLA
       const triageRes = await request(app)

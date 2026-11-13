@@ -19,6 +19,8 @@ import Communications from './pages/Communications'
 import Parcels from './pages/Parcels'
 import Matters from './pages/Matters'
 import Invoices from './pages/Invoices'
+import Tickets from './pages/Tickets'
+import Properties from './pages/Properties'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 import LoadingSpinner from './components/LoadingSpinner'
@@ -55,6 +57,8 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/tickets" element={<Tickets />} />
+        <Route path="/properties" element={<Properties />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/customers/:id" element={<CustomerDetail />} />
         <Route path="/leads" element={<Leads />} />

@@ -284,7 +284,8 @@ class TicketModel {
     );
 
     // Calculate SLA countdown
-    const committedHours = t.priority === 'emergency' ? 3 : (t.priority === 'standard' ? 36 : 96);
+    const emergencyHours = parseInt(process.env.EMERGENCY_SLA_HOURS || '6', 10);
+    const committedHours = t.priority === 'emergency' ? emergencyHours : (t.priority === 'standard' ? 36 : 96);
     let minutesRemaining = null;
     let isExpired = false;
     if (t.sla_response_due_at) {
@@ -736,7 +737,8 @@ class TicketModel {
     const openEmergencies = emergencyRows[0]?.count || 0;
 
     // 2. SLA breaches
-    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    const emergencyHours = parseInt(process.env.EMERGENCY_SLA_HOURS || '6', 10);
+    const emergencyCutoff = new Date(Date.now() - emergencyHours * 60 * 60 * 1000).toISOString();
     const nowIso = new Date().toISOString();
 
     const slaRows = await db.query(
@@ -748,7 +750,7 @@ class TicketModel {
            OR (priority = 'emergency' AND status = 'reported' AND created_at <= ?)
            OR (status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= ?)
          )`,
-      [tenant_id, threeHoursAgo, nowIso]
+      [tenant_id, emergencyCutoff, nowIso]
     );
     const slaBreaches = slaRows[0]?.count || 0;
 
@@ -906,7 +908,7 @@ class TicketModel {
         target_warranty_rework_max: 3.0,
         status_warranty: warrantyReworkRatePct <= 3.0 ? 'on_target' : 'elevated_claims',
         quote_acceptance_rate_pct: approvalAcceptanceRatePct,
-        emergency_sla_window: '2–4 Hours Guaranteed',
+        emergency_sla_window: 'Same-day response committed (2–6h target)',
         workmanship_warranty_period: '30 Days 100% Free Rework Guarantee'
       },
       airbnb_portfolio_health: {

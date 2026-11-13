@@ -34,9 +34,48 @@ const validate = (req, res, next) => {
   next();
 };
 
+
+// Security & Rate Limiting for Public WhatsApp Intake Webhook
+const intakeRateLimits = new Map();
+const checkIntakeRateLimit = (req, res, next) => {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxRequests = 30;
+
+  const current = intakeRateLimits.get(ip) || [];
+  const valid = current.filter(time => now - time < windowMs);
+  if (valid.length >= maxRequests) {
+    return res.status(429).json({
+      success: false,
+      message: 'Too many WhatsApp intake requests. Please wait a minute before retrying.'
+    });
+  }
+  valid.push(now);
+  intakeRateLimits.set(ip, valid);
+  next();
+};
+
+const verifyWhatsAppWebhookToken = (req, res, next) => {
+  const secret = process.env.WHATSAPP_WEBHOOK_SECRET;
+  if (!secret) {
+    return next();
+  }
+  const token = req.headers['x-whatsapp-webhook-token'] || req.headers['x-api-key'] || req.query.token;
+  if (token !== secret) {
+    return res.status(403).json({
+      success: false,
+      message: 'Unauthorized WhatsApp webhook signature or token'
+    });
+  }
+  next();
+};
+
 // WhatsApp intake can be called by webhooks/integrations or authenticated users
 router.post(
   '/whatsapp-intake',
+  checkIntakeRateLimit,
+  verifyWhatsAppWebhookToken,
   [
     body('description')
       .trim()

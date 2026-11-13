@@ -414,6 +414,24 @@ class PropertyModel {
     else if (healthScore < 75) healthGrade = 'Attention Needed';
     else if (healthScore < 90) healthGrade = 'Good';
 
+    // Human-readable findings and formula narrative for landlords & Airbnb hosts
+    const findings = [];
+    if (openEmergencies > 0) {
+      findings.push(`${openEmergencies} active emergency issue(s) require immediate field intervention.`);
+    }
+    if (recurringAlerts.length > 0) {
+      findings.push(`Recurring failures flagged in ${recurringAlerts.map(a => a.category).join(', ')} over the past 90 days.`);
+    }
+    const routineOpen = openTickets - openEmergencies;
+    if (routineOpen > 0) {
+      findings.push(`${routineOpen} pending routine maintenance item(s) awaiting resolution.`);
+    }
+    if (findings.length === 0) {
+      findings.push('All systems operating nominally with zero active emergencies and no recurring failure hotspots.');
+    }
+
+    const formulaExplanation = 'Base 100 points: Deducts 25 points per unresolved emergency, 15 points per recurring category hotspot (>2 incidents in 90 days), and 5 points per open routine ticket (capped at 30 points).';
+
     return {
       property: {
         id: property.id,
@@ -432,7 +450,10 @@ class PropertyModel {
         score: healthScore,
         grade: healthGrade,
         open_emergencies: openEmergencies,
-        recurring_issues_count: recurringAlerts.length
+        recurring_issues_count: recurringAlerts.length,
+        formula_explanation: formulaExplanation,
+        findings_narrative: findings.join(' '),
+        findings: findings
       },
       lifetime_summary: {
         total_tickets: totalTickets,
